@@ -5,14 +5,54 @@ y las versiones usan [versionado semántico](https://semver.org/lang/es/).
 
 ## [0.1.2] - 2026-10-07
 
+### Añadido
+
+- **Links de invitación:** el anfitrión copia un link desde la sala y lo comparte con quien quiera. Con cuenta, se
+  entra con ella (y se pueden usar los mazos guardados); sin cuenta, se juega como **«Invitado 1»**, **«Invitado 2»**…
+  (numerados dentro de cada partida) pegando el enlace de un mazo de Moxfield. Los invitados solo tienen acceso a su partida.
+- **Fondo de tu zona en la mesa:** en tu perfil buscas una carta y eliges uno de sus artes; se usa como tapete de tu
+  parte del tablero en las partidas con amigos, y los demás jugadores también lo ven. Solo para usuarios registrados.
+- **Atajos de teclado** con el ratón sobre una carta: **T** girar o enderezar, **C** cementerio, **E** exilio,
+  **M** mano, **P** pila, **B** boca abajo, **O** Oracle y rulings. **R** roba una carta.
+- **Cartas boca abajo en el exilio** (presagio y similares): solo su dueño ve cuál es. También se puede poner una
+  carta boca abajo en el campo desde la biblioteca (manifestar).
+- **Oracle y rulings**: busca cualquier carta, o usa el menú de una carta, para ver su texto Oracle y sus rulings
+  oficiales sin salir de la partida.
+
 ### Cambiado
 
+- **Nueva disposición de la partida:** a la izquierda, el estado de la partida y las acciones; al centro, la mesa;
+  a la derecha, el registro, el chat y la búsqueda de Oracle.
+- **Tiempo de turno de 5 minutos**, y cada acción distinta suma 10 segundos. Repetir la misma acción (por ejemplo,
+  girar varias veces la misma carta) no suma más, así que el turno termina pasando solo. El chat no suma tiempo.
+- **Notificaciones en tiempo real:** las invitaciones a partidas y las solicitudes de amistad aparecen (y desaparecen)
+  en la campana al momento, sin recargar la página.
+- **Una partida a la vez:** quien está en una sala o partida, sea anfitrión o invitado, no puede crear otra hasta
+  terminarla, rendirse o salir de la sala.
+- **El tiempo se detiene mientras haya algo en la pila** (⏸) y sigue donde quedó cuando la pila se resuelve.
+- **Sin botones de fase:** queda un solo botón. Al comienzo cada jugador pulsa «Empezar partida» cuando termina sus
+  mulligans (se puede cancelar), y el turno 1 empieza cuando **todos** confirman. Después, el botón es «Pasar turno».
+- **Doble clic** para girar o enderezar las cartas del campo y para robar de la biblioteca, igual que para lanzar
+  desde la mano. Aplica también a la mesa de prueba.
+- **El cementerio y el exilio se ven siempre**, aunque estén vacíos, para poder soltar cartas en ellos.
+- **El Mulligan desaparece** al empezar la partida.
+- **Los contadores de vida, veneno y daño de comandante** cambian al instante y no pierden clics seguidos.
 - **La sección «Versiones» de la portada** muestra el historial de cambios del sitio, con la versión más reciente
   abierta y las anteriores plegadas.
 
 ### Eliminado
 
 - Publicar versiones desde el panel de administración.
+
+### Corregido
+
+- En la partida multijugador vuelven a funcionar los clics en la mesa: los contadores de vida, veneno y daño de
+  comandante, los botones de fase y abrir el cementerio o el exilio.
+- La vida, el veneno y el daño de comandante se pueden anotar en el turno de otro jugador sin pulsar **Responder**.
+- En ventanas estrechas, los datos de un rival ya no tapan los contadores propios.
+- Los mensajes largos del chat hacen salto de línea en lugar de desbordar el registro; el máximo es de 255 caracteres.
+- Las cartas cuya imagen no cargaba (por ejemplo, algunas tierras básicas) se buscan de nuevo por su nombre; si
+  aun así no hay imagen, se muestra el nombre de la carta.
 
 ## [0.1.1] - 2026-10-07
 

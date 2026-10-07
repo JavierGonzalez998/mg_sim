@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load mesa %}
 {% block title %}Sala de {{ partida.anfitrion.username }}{% endblock %}
 {% block content %}
   <div class="mb-10 border-b border-linea pb-8">
@@ -28,9 +29,9 @@
         {% for j in jugadores %}
           <li class="flex items-center gap-4 border-b border-dashed border-linea py-4 first:border-t first:border-solid">
             <span class="font-mono text-xs text-hueso-3">{{ forloop.counter|stringformat:"02d" }}</span>
-            <span class="avatar size-10 text-lg">{{ j.usuario.username|first|upper }}</span>
+            <span class="avatar size-10 text-lg">{{ j.usuario|nombre|first|upper }}</span>
             <div class="mr-auto">
-              <p class="font-display text-xl">{{ j.usuario.username }}
+              <p class="font-display text-xl">{{ j.usuario|nombre }}
                 {% if j.usuario_id == partida.anfitrion_id %}<span class="sello sello-oro ml-1 align-middle">anfitrión</span>{% endif %}</p>
               <p class="text-sm text-hueso-2">
                 {% if j.mazo_nombre %}{{ j.mazo_nombre }} · <span class="font-mono text-xs">{{ j.formato|default:"sin formato" }}</span>
@@ -56,6 +57,16 @@
       {% endif %}
 
       {% if es_anfitrion %}
+        <section class="tarjeta">
+          <h2 class="mt-0">Link de invitación</h2>
+          <p class="mb-3 text-sm text-hueso-2">Compártelo con quien quieras: con cuenta o sin ella (entra como invitado).</p>
+          <div class="flex gap-2">
+            <input id="link-invitacion" value="{{ link }}" readonly aria-label="Link de invitación" class="min-w-0 flex-1"
+                   onclick="this.select()">
+            <button type="button" id="copiar-link">Copiar</button>
+          </div>
+        </section>
+
         <section class="tarjeta">
           <h2 class="mt-0">Invitar amigos</h2>
           {% if not hay_lugar %}
@@ -93,6 +104,13 @@
   </form>
 
   <script>
+    document.getElementById("copiar-link")?.addEventListener("click", async e => {
+      const campo = document.getElementById("link-invitacion");
+      try { await navigator.clipboard.writeText(campo.value); } catch { campo.select(); document.execCommand("copy"); }
+      e.target.textContent = "¡Copiado!";
+      setTimeout(() => (e.target.textContent = "Copiar"), 2000);
+    });
+
     // Recarga la sala (por WebSocket) cuando alguien se une, elige mazo o el anfitrión inicia la partida.
     const version = {{ partida.version }};
     function recargar() {

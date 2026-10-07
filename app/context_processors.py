@@ -1,5 +1,6 @@
 from user.models import Amistad
 
+from .invitados import es_invitado
 from .models import Jugador
 
 
@@ -11,4 +12,4 @@ def invitaciones(request):
                         .select_related("partida__anfitrion"))
     solicitudes = list(Amistad.objects.filter(a=request.user, aceptada=False).select_related("de"))
     return {"invitaciones": invitaciones, "solicitudes": solicitudes,
-            "notificaciones": len(invitaciones) + len(solicitudes)}
+            "notificaciones": len(invitaciones) + len(solicitudes), "es_invitado": es_invitado(request.user)}

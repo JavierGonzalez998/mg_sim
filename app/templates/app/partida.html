@@ -4,18 +4,23 @@
 {% block main_class %}{% endblock %}
 {% block head %}
 <style>
+  /* Izquierda: estado de la partida y acciones · centro: la mesa · derecha: registro, chat y Oracle. */
   #mesa { display: grid; gap: 6px; padding: 6px; box-sizing: border-box; height: calc(100vh - 3.5rem);
-          grid-template-columns: minmax(0, 1fr) 290px; grid-template-rows: minmax(0, 1fr) minmax(0, 1.35fr) 165px;
-          grid-template-areas: "rivales lateral" "propio lateral" "mano lateral"; font-size: .85rem; }
+          grid-template-columns: 250px minmax(0, 1fr) 260px; grid-template-rows: minmax(0, 1fr) minmax(0, 1.35fr) 165px;
+          grid-template-areas: "control rivales charla" "control propio charla" "control mano charla"; font-size: .85rem; }
   #rivales { grid-area: rivales; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 6px; }
   #propio { grid-area: propio; display: grid; }
   #mano { grid-area: mano; --w: 96px; }
-  #lateral { grid-area: lateral; display: flex; flex-direction: column; gap: 8px; min-height: 0; padding: 4px;
+  .lateral { display: flex; flex-direction: column; gap: 8px; min-height: 0; padding: 4px; overflow: auto;
              background: rgb(20 16 15 / .85); border: 1px solid var(--color-linea); }
+  #control { grid-area: control; }
+  #charla { grid-area: charla; overflow: hidden; }
 
-  .jugador { --w: 54px; display: flex; flex-direction: column; min-height: 0;
+  .jugador { --w: 54px; display: flex; flex-direction: column; min-height: 0; overflow: auto;
              background: rgb(6 10 8 / .25); border: 1px solid rgb(238 229 209 / .1); }
   .jugador.propio { --w: 74px; }
+  /* Fondo elegido en el perfil (arte de carta), con un velo para que las cartas se sigan leyendo. */
+  .jugador.con-fondo { background: linear-gradient(rgb(6 10 8 / .7), rgb(6 10 8 / .7)), var(--fondo) center / cover; }
   .jugador.activo { border-color: var(--color-bermellon); box-shadow: 0 0 0 1px var(--color-bermellon), 0 0 24px rgb(224 85 47 / .25); }
   .jugador.rindio { opacity: .4; filter: grayscale(.8); }
   .jugador header { display: flex; flex-wrap: wrap; gap: .25rem .9rem; align-items: center; padding: 4px 8px;
@@ -31,9 +36,12 @@
             grid-template-areas: "mando campo pilas" "mando tierras pilas"; }
 
   .zona.mando { grid-area: mando; } .zona.campo { grid-area: campo; } .zona.tierras { grid-area: tierras; }
-  .pilas { grid-area: pilas; display: flex; flex-direction: column; gap: 4px; overflow: auto; }
-  .pila { cursor: pointer; text-align: center; position: relative; flex: none; }
-  .pila .n { display: block; font: 500 11px/1.6 var(--font-mono); }
+  /* Biblioteca, cementerio y exilio se reparten el alto: siempre visibles, sin scroll, y la carta se ajusta. */
+  .pilas { grid-area: pilas; display: grid; grid-template-rows: repeat(3, minmax(0, 1fr)); gap: 4px; min-height: 0; }
+  .pila { cursor: pointer; text-align: center; position: relative; display: flex; flex-direction: column;
+          align-items: center; overflow: hidden; }
+  .pila .n { position: absolute; left: 50%; bottom: 3px; transform: translateX(-50%); z-index: 1; padding: 0 4px;
+             white-space: nowrap; pointer-events: none; background: rgb(11 8 7 / .8); font: 500 10px/1.5 var(--font-mono); }
   .cartas { display: flex; flex-wrap: wrap; gap: 3px; align-items: flex-start; }
 
   .carta { position: relative; width: var(--w); aspect-ratio: 63 / 88; cursor: grab; transition: transform .15s; flex: none; }
@@ -42,14 +50,15 @@
   .carta.girada, .carta.girada:hover { transform: rotate(90deg); margin: 0 calc(var(--w) * .2); }
   .carta.boca-abajo img { opacity: .45; }
   .carta.ficha img, .carta.ficha .texto { outline: 2px solid var(--color-musgo); }
-  .pila .dorso { width: var(--w); aspect-ratio: 63 / 88; margin: auto; }
+  .pila > .carta, .pila > .dorso, .pila > .hueco { flex: 1 1 0; min-height: 0; width: auto; max-width: 100%;
+                                                   aspect-ratio: 63 / 88; margin: 0; }
   .texto { background: var(--color-hueso); color: var(--color-tinta); padding: 4px; overflow: hidden;
            font: italic 600 .72rem/1.15 var(--font-display); border: 3px solid #0b0807; }
   .chip { position: absolute; left: -3px; background: var(--color-tinta); color: var(--color-hueso);
           border: 1px solid rgb(238 229 209 / .3); padding: 0 4px; white-space: nowrap;
           font: 500 9px/1.5 var(--font-mono); letter-spacing: .04em; }
 
-  #info, #fases, .botones { display: flex; flex-wrap: wrap; gap: 5px; }
+  #info, .botones { display: flex; flex-wrap: wrap; gap: 5px; }
   #info p { margin: 0; font-size: .8rem; }
   #info b { font: italic 600 1rem/1 var(--font-display); }
   .bloque { display: flex; flex-wrap: wrap; gap: 5px; padding: 6px; border: 1px solid var(--color-linea); }
@@ -62,15 +71,28 @@
   #pila:empty::before { content: "Pila vacía"; margin: auto; font: 500 11px/1 var(--font-mono); color: var(--color-hueso-3); }
   #pila .carta:first-child { outline: 2px solid var(--color-bermellon); }
   .prio { color: var(--color-bermellon-2); }
-  #fases button.actual { background: var(--color-bermellon); border-color: var(--color-bermellon); color: var(--color-tinta); }
   .ganador { font: italic 600 1.4rem/1.2 var(--font-display); color: var(--color-bermellon-2); }
   #log { flex: 1; min-height: 0; overflow: auto; margin: 0; padding: 6px 6px 6px 1.6rem; background: rgb(6 5 5 / .5);
          border: 1px solid var(--color-linea); font: 11px/1.5 var(--font-mono); color: var(--color-hueso-2); }
+  #log li { overflow-wrap: anywhere; }  /* textos largos (chat) hacen salto de línea, sin scroll horizontal */
   #log li::marker { color: var(--color-hueso-3); }
   #log li[data-img] { color: var(--color-hueso); text-decoration: underline dotted rgb(224 85 47 / .7); }
-  #chat { display: flex; gap: 4px; } #chat input { flex: 1; min-width: 0; padding: 6px 8px; }
+  #chat, #oraculo { display: flex; gap: 4px; } #chat input, #oraculo input { flex: 1; min-width: 0; padding: 6px 8px; }
+  .hueco { width: var(--w); aspect-ratio: 63 / 88; margin: auto; display: grid; place-items: center; box-sizing: border-box;
+           border: 1px dashed rgb(238 229 209 / .3); border-radius: 4px; font-size: 1rem; opacity: .6; overflow: hidden; }
+  .atajos { margin: 0; font: 10px/1.6 var(--font-mono); color: var(--color-hueso-3); }
+  .atajos kbd { padding: 0 3px; border: 1px solid var(--color-linea); color: var(--color-hueso); font: inherit; }
 
-  #vista { right: 300px; bottom: 175px; width: 260px; }
+  .oraculo { display: grid; grid-template-columns: 240px 1fr; gap: 1.25rem; align-items: start; }
+  .oraculo img { width: 100%; border-radius: 10px; }
+  .oraculo h4 { margin: 0 0 .25rem; font: italic 600 1.15rem/1.2 var(--font-display); }
+  .oraculo .coste, .oraculo .tipo, .oraculo time { font: 500 11px/1.4 var(--font-mono); color: var(--color-hueso-3); }
+  .oraculo .tipo { margin: 0 0 .5rem; }
+  .texto-oracle { white-space: pre-line; margin: 0 0 .75rem; }
+  .rulings { margin: 0 0 .75rem; padding-left: 1.1rem; display: grid; gap: .4rem; font-size: .85rem; }
+  @media (max-width: 760px) { .oraculo { grid-template-columns: 1fr; } .oraculo img { max-width: 240px; } }
+
+  #vista { right: 280px; bottom: 175px; width: 260px; }
   #menu { position: fixed; z-index: 40; background: var(--color-tinta-2); border: 1px solid var(--color-linea);
           box-shadow: 6px 6px 0 0 rgb(0 0 0 / .55); padding: 4px; display: flex; flex-direction: column;
           max-height: 80vh; overflow: auto; min-width: 210px; }
@@ -87,16 +109,15 @@
 </style>
 {% endblock %}
 {% block content %}
-<div id="mesa" class="fieltro" data-ws="/ws/game/{{ partida.pk }}/" data-accion="{% url 'accion_partida' partida.pk %}"
+<div id="mesa" class="fieltro" data-ws="/ws/game/{{ partida.pk }}/" data-url-accion="{% url 'accion_partida' partida.pk %}"
      data-salir="{% url 'partidas' %}" data-csrf="{{ csrf_token }}">
   <div id="rivales"></div>
   <div id="propio"></div>
   <div id="mano" class="zona"></div>
-  <aside id="lateral">
+  <aside id="control" class="lateral" aria-label="Estado de la partida y acciones">
     <div id="info"></div>
     <section class="bloque">
-      <h2 class="etiqueta">Fases</h2>
-      <div id="fases"></div>
+      <h2 class="etiqueta">Turno</h2>
       <button data-accion="pasar_turno" id="pasar"><strong>Pasar turno</strong></button>
     </section>
     <section class="bloque">
@@ -121,10 +142,15 @@
       <button data-accion="moneda">Moneda</button>
       <button data-accion="rendirse">Rendirse</button>
     </section>
+  </aside>
+  <aside id="charla" class="lateral" aria-label="Registro y chat">
+    <h2 class="etiqueta m-0">Registro y chat</h2>
     <ol id="log"></ol>
-    <form id="chat"><input name="texto" maxlength="300" placeholder="Chat…" autocomplete="off" aria-label="Mensaje"><button>Enviar</button></form>
-    <p class="pista">Clic: girar · Doble clic en la mano: lanzar a la pila (tierras: jugar) · Clic derecho
-      (o mantener pulsado): más acciones · Arrastrar: mover (Shift al soltar en la biblioteca: al fondo).</p>
+    <form id="chat"><input name="texto" maxlength="255" placeholder="Chat…" autocomplete="off" aria-label="Mensaje"><button>Enviar</button></form>
+    <form id="oraculo"><input name="carta" placeholder="Oracle y rulings de una carta…" autocomplete="off" aria-label="Buscar carta en Scryfall"><button>Ver</button></form>
+    <p class="atajos">Doble clic: lanzar (mano) · girar (campo) · robar (biblioteca). Clic derecho: más acciones.<br>
+      Con el ratón sobre una carta: <kbd>T</kbd> girar <kbd>C</kbd> cementerio <kbd>E</kbd> exilio <kbd>M</kbd> mano
+      <kbd>P</kbd> pila <kbd>B</kbd> boca abajo <kbd>O</kbd> Oracle · <kbd>R</kbd> robar.</p>
   </aside>
 </div>
 <img id="vista" hidden alt="">
@@ -136,5 +162,6 @@
   <button id="dialogo-cerrar">Cerrar</button>
 </dialog>
 <div id="aviso" hidden role="alert"></div>
+{{ fondos|json_script:"fondos" }}
 <script src="{% static 'app/partida.js' %}"></script>
 {% endblock %}

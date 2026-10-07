@@ -80,6 +80,78 @@
     </section>
   </div>
 
+  <section id="fondo" class="tarjeta mt-12">
+    <h2 class="mt-0">Fondo de tu zona en la mesa</h2>
+    <p class="mb-5 text-sm text-hueso-2">Elige el arte de una carta para tu parte del tablero en las partidas con amigos.
+      Los demás jugadores también lo ven, como tu tapete.</p>
+
+    <div class="mb-6 flex flex-wrap items-center gap-4">
+      {% if fondo.fondo %}
+        <img src="{{ fondo.fondo }}" alt="Fondo actual" class="h-24 w-36 border border-linea object-cover">
+        <div class="mr-auto">
+          <p class="etiqueta mb-1">Fondo actual</p>
+          <p class="m-0">{{ fondo.fondo_nombre|default:"Arte de carta" }}</p>
+        </div>
+        <form method="post" action="{% url 'cambiar_fondo' %}">
+          {% csrf_token %}<input type="hidden" name="fondo" value="">
+          <button type="submit" class="btn-chico">Quitar fondo</button>
+        </form>
+      {% else %}
+        <p class="m-0 text-hueso-3">Sin fondo: tu zona usa el tapete verde.</p>
+      {% endif %}
+    </div>
+
+    <form id="buscar-arte" class="flex items-end gap-2">
+      <div class="flex-1">
+        <label for="id_carta_fondo">Buscar carta</label>
+        <input id="id_carta_fondo" name="carta" type="search" required autocomplete="off" placeholder="Ej. Krenko, Mob Boss">
+      </div>
+      <button type="submit">Ver artes</button>
+    </form>
+    <p id="artes-estado" class="mt-3 text-sm text-hueso-2" aria-live="polite"></p>
+    <div id="artes" class="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4"></div>
+
+    {# Al elegir un arte se rellena y envía este formulario (el servidor solo acepta artes de Scryfall). #}
+    <form id="elegir-arte" method="post" action="{% url 'cambiar_fondo' %}" hidden>
+      {% csrf_token %}<input type="hidden" name="fondo"><input type="hidden" name="nombre">
+    </form>
+  </section>
+
+  <script>
+    // Artes de una carta desde la API pública de Scryfall: una opción por cada ilustración distinta.
+    document.getElementById("buscar-arte").onsubmit = async e => {
+      e.preventDefault();
+      const estado = document.getElementById("artes-estado"), artes = document.getElementById("artes");
+      estado.textContent = "Buscando en Scryfall…";
+      artes.replaceChildren();
+      try {
+        const api = async url => { const r = await fetch(url); const d = await r.json(); if (!r.ok) throw new Error(d.details); return d; };
+        const carta = await api(`https://api.scryfall.com/cards/named?fuzzy=${encodeURIComponent(e.target.carta.value)}`);
+        const q = encodeURIComponent(`!"${carta.name}"`);
+        const { data } = await api(`https://api.scryfall.com/cards/search?q=${q}&unique=art&order=released&include_extras=true`);
+        const opciones = data.flatMap(c => (c.image_uris ? [c] : c.card_faces || [])
+          .filter(f => f.image_uris?.art_crop)
+          .map(f => ({ url: f.image_uris.art_crop, nombre: `${f.name || c.name} · ${c.set_name} · ${f.artist || c.artist}` })));
+        estado.textContent = `${opciones.length} arte(s) de ${carta.name}. Haz clic en uno para usarlo.`;
+        artes.replaceChildren(...opciones.map(o => {
+          const b = Object.assign(document.createElement("button"), { type: "button", title: o.nombre,
+            className: "block p-0 border border-linea hover:border-bermellon normal-case tracking-normal" });
+          b.append(Object.assign(document.createElement("img"), { src: o.url, alt: o.nombre, loading: "lazy",
+            className: "block aspect-[4/3] w-full object-cover" }));
+          b.onclick = () => {
+            const f = document.getElementById("elegir-arte");
+            f.fondo.value = o.url;
+            f.nombre.value = o.nombre;
+            f.submit();
+          };
+          return b;
+        }));
+      } catch (err) {
+        estado.textContent = err.message || "No se pudo consultar Scryfall.";
+      }
+    };
+  </script>
+
   <div class="mt-12">
     {% include "app/_mazos.html" %}
   </div>

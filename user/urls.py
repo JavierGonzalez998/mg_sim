@@ -8,6 +8,7 @@ urlpatterns = [
     path("login/logout/", auth_views.LogoutView.as_view(), name="logout"),
     path("registro/", views.registro, name="registro"),
     path("user/", views.perfil, name="perfil"),
+    path("user/fondo/", views.cambiar_fondo, name="cambiar_fondo"),
     path("user/amigos/buscar/", views.buscar_usuarios, name="buscar_usuarios"),
     path("user/amigos/solicitar/", views.enviar_solicitud, name="enviar_solicitud"),
     path("user/amigos/<int:pk>/aceptar/", views.aceptar_solicitud, name="aceptar_solicitud"),

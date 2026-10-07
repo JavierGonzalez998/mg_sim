@@ -12,13 +12,15 @@ import time
 ZONAS = ("biblioteca", "mano", "campo", "tierras", "cementerio", "exilio", "mando")
 OCULTAS = {"biblioteca", "mano"}
 CAMPO = {"campo", "tierras"}
-FASES = ("comienzo", "principal1", "combate", "principal2", "final")
+BOCA_ABAJO = CAMPO | {"exilio"}  # zonas donde una carta puede estar boca abajo
 NOMBRE_ZONA = {"biblioteca": "la biblioteca", "mano": "la mano", "campo": "el campo de batalla",
                "tierras": "el campo de batalla", "cementerio": "el cementerio", "exilio": "el exilio",
                "mando": "la zona de mando", "pila": "la pila"}
 MAX_LOG = 200
+MAX_CHAT = 255  # caracteres por mensaje de chat
 DANO_COMANDANTE_LETAL = 21
-DURACION_TURNO = 10 * 60  # segundos; al agotarse, el turno pasa solo
+DURACION_TURNO = 5 * 60  # segundos; al agotarse, el turno pasa solo
+BONO_ACCION = 10  # segundos que suma cada acción distinta del turno (repetir la misma no suma)
 
 
 class AccionInvalida(Exception):
@@ -45,7 +47,8 @@ def crear(jugadores, formato):
     random.shuffle(orden)
     e = {"formato": formato, "turno": 1, "activo": 0, "fase": "comienzo", "ganador": None,
          "cartas": {}, "jugadores": [], "log": [], "sig": 0, "pila": [], "prioridad": [0],
-         "inicio_turno": time.time()}
+         "inicio_turno": time.time(), "extra_turno": 0, "acciones_turno": [], "pausa_desde": None,
+         "listos": []}
     for i, (uid, nombre, mazo) in enumerate(orden):
         e["jugadores"].append({"id": uid, "nombre": nombre, "vida": vida_inicial(formato), "veneno": 0,
                                "dano_comandante": {}, "mulligans": 0, "rindio": False,
@@ -56,8 +59,8 @@ def crear(jugadores, formato):
             _nueva_carta(e, i, c, "mando", comandante=True)
         random.shuffle(e["jugadores"][i]["zonas"]["biblioteca"])
         _robar(e, i, 7)
-    _log(e, f"Comienza la partida. Empieza {orden[0][1]}. Cada jugador robó 7 cartas. Mientras {orden[0][1]} "
-            f"no cambie de fase, todos pueden hacer sus mulligans.")
+    _log(e, f"Comienza la partida. Empieza {orden[0][1]}. Cada jugador robó 7 cartas. Hagan sus mulligans y "
+            f"pulsen «Empezar partida»: el turno 1 empieza cuando todos estén listos.")
     return e
 
 
@@ -142,7 +145,7 @@ def _con_prioridad(e):
 
 
 def _preparacion(e):
-    """Antes de que el primer jugador cambie de fase todos actúan a la vez (mulligans)."""
+    """Hasta que todos pulsan «Empezar partida», todos actúan a la vez (mulligans)."""
     return e["turno"] == 1 and e["fase"] == "comienzo"
 
 
@@ -175,6 +178,8 @@ def a_barajar(e, yo, a):
 
 def a_mulligan(e, yo, a):
     # Mulligan de Londres: se roban 7 y luego el jugador pone N al fondo (con "mover").
+    if not _preparacion(e):
+        raise AccionInvalida("Los mulligans solo se hacen antes de empezar la partida.")
     j = e["jugadores"][yo]
     j["zonas"]["biblioteca"].extend(j["zonas"]["mano"])
     j["zonas"]["mano"] = []
@@ -229,8 +234,12 @@ def a_mover(e, yo, a):
         _salir_del_campo(e, cid)
     if origen_z == "mando" and zona in CAMPO | {"pila"} and c["comandante"]:
         c["lanzamientos"] += 1
-    if zona in CAMPO and a.get("boca_abajo"):
-        c["boca_abajo"] = True  # jugar boca abajo (transfigurar, manifestar...) sin revelar la carta
+    # Boca abajo (transfigurar, manifestar, disfrazar, presagio...): al campo o al exilio sin revelar la carta.
+    # Entre zonas del campo conserva el estado; en cualquier otra zona la carta queda boca arriba.
+    if a.get("boca_abajo") and zona in BOCA_ABAJO:
+        c["boca_abajo"] = True
+    elif not {origen_z, zona} <= CAMPO:
+        c["boca_abajo"] = False
 
     if zona == "pila":
         c["controlador"] = yo
@@ -286,7 +295,12 @@ def a_voltear(e, yo, a):
 
 
 def a_boca_abajo(e, yo, a):
-    cid, c = _en_campo(e, yo, a)
+    cid, i, z = _carta(e, yo, a)
+    if z not in BOCA_ABAJO:
+        raise AccionInvalida("Solo se ponen boca abajo cartas del campo de batalla o del exilio.")
+    c = e["cartas"][cid]
+    if c["boca_abajo"] and z == "exilio" and c["dueno"] != yo:
+        raise AccionInvalida("Solo su dueño puede revelar una carta exiliada boca abajo.")
     c["boca_abajo"] = not c["boca_abajo"]
     _log(e, f"{_nombre(e, yo)} puso {'boca abajo una carta' if c['boca_abajo'] else 'boca arriba ' + c['nombre']}.",
          None if c["boca_abajo"] else _publica(c))
@@ -383,11 +397,26 @@ def _solo_activo(e, yo):
         raise AccionInvalida("Solo el jugador activo puede hacer esto.")
 
 
-def a_fase(e, yo, a):
-    _solo_activo(e, yo)
-    if a.get("fase") not in FASES:
-        raise AccionInvalida("Fase inválida.")
-    e["fase"] = a["fase"]
+def a_listo(e, yo, a):
+    """«Empezar partida»: el jugador termina sus mulligans. Volver a pulsarlo lo cancela."""
+    if not _preparacion(e):
+        raise AccionInvalida("La partida ya empezó.")
+    if yo in e["listos"]:
+        e["listos"].remove(yo)
+        _log(e, f"{_nombre(e, yo)} todavía no está listo.")
+    else:
+        e["listos"].append(yo)
+        _log(e, f"{_nombre(e, yo)} está listo para empezar.")
+    _empezar_si_todos_listos(e)
+
+
+def _empezar_si_todos_listos(e):
+    """La partida empieza cuando todos los que siguen en juego pulsaron «Empezar partida»."""
+    vivos = {i for i, j in enumerate(e["jugadores"]) if not j["rindio"]}
+    if _preparacion(e) and vivos <= set(e["listos"]):
+        e["fase"] = "principal1"
+        e["inicio_turno"], e["extra_turno"], e["acciones_turno"] = time.time(), 0, []  # el reloj arranca ahora
+        _log(e, f"¡Todos listos! Empieza el turno 1 de {_nombre(e, e['activo'])}.")
 
 
 def _siguiente_vivo(e, desde):
@@ -405,6 +434,7 @@ def _pasar_turno(e):
     e["fase"] = "principal1"
     e["prioridad"] = [e["activo"]]
     e["inicio_turno"] = time.time()
+    e["extra_turno"], e["acciones_turno"], e["pausa_desde"] = 0, [], None
     a_enderezar(e, e["activo"], {})
     _robar(e, e["activo"], 1)
     _log(e, f"Turno {e['turno']}: {_nombre(e, e['activo'])} enderezó y robó una carta.")
@@ -418,11 +448,32 @@ def a_pasar_turno(e, yo, a):
 
 
 def _restante(e):
-    return e["inicio_turno"] + DURACION_TURNO - time.time()
+    ahora = e["pausa_desde"] or time.time()  # en pausa, el reloj queda congelado
+    return e["inicio_turno"] + DURACION_TURNO + e["extra_turno"] - ahora
+
+
+def _pausar_con_pila(e):
+    """Mientras haya algo en la pila el reloj del turno se detiene; al vaciarse, sigue donde quedó."""
+    if e["pila"] and not e["pausa_desde"]:
+        e["pausa_desde"] = time.time()
+    elif not e["pila"] and e["pausa_desde"]:
+        e["inicio_turno"] += time.time() - e["pausa_desde"]
+        e["pausa_desde"] = None
+
+
+def _sumar_tiempo(e, a):
+    """Cada acción distinta del turno suma BONO_ACCION. La misma acción sobre la misma carta (o zona, fase,
+    jugador) cuenta una sola vez, así que el turno no se alarga sin fin y termina pasando solo."""
+    clave = ":".join(str(a.get(k, "")) for k in ("accion", "carta", "zona", "fase", "jugador"))
+    if clave not in e["acciones_turno"]:
+        e["acciones_turno"].append(clave)
+        e["extra_turno"] += BONO_ACCION
 
 
 def a_tiempo(e, yo, a):
     """Lo pide el navegador de cualquier jugador cuando su cuenta atrás llega a cero."""
+    if e["pausa_desde"]:
+        raise AccionInvalida("El tiempo está detenido hasta que se resuelva la pila.")
     if _restante(e) > 2:  # margen por el desfase de los relojes
         raise AccionInvalida("Al turno aún le queda tiempo.")
     _log(e, f"⏱ Se acabó el tiempo de {_nombre(e, e['activo'])}.")
@@ -456,21 +507,30 @@ def a_rendirse(e, yo, a):
         _log(e, f"¡{_nombre(e, vivos[0])} gana la partida!")
     elif e["activo"] == yo:
         _pasar_turno(e)
+    else:
+        _empezar_si_todos_listos(e)  # si solo faltaba él por confirmar
 
 
 def a_chat(e, yo, a):
-    _log(e, f"💬 {_nombre(e, yo)}: {_texto(a, 'texto', 300)}")
+    _log(e, f"💬 {_nombre(e, yo)}: {_texto(a, 'texto', MAX_CHAT)}")
 
 
 ACCIONES = {nombre[2:]: f for nombre, f in globals().items() if nombre.startswith("a_")}
-SIN_PRIORIDAD = {a_chat, a_rendirse, a_responder, a_tiempo}
+# Sin prioridad: el chat, rendirse, pedir la prioridad y anotar contadores (como en una mesa real, cada jugador
+# apunta el daño que recibe aunque no sea su turno).
+SIN_PRIORIDAD = {a_chat, a_rendirse, a_responder, a_tiempo, a_listo, a_vida, a_veneno, a_dano_comandante}
+SIN_BONO = {a_chat, a_tiempo, a_listo}  # no suman tiempo al turno
 
 
 def _actualizar(e):
-    """Partidas empezadas antes de que existieran la pila y la prioridad."""
+    """Partidas empezadas antes de que existieran la pila, la prioridad o el reloj de turno."""
     e.setdefault("pila", [])
     e.setdefault("prioridad", [e["activo"]])
     e.setdefault("inicio_turno", time.time())
+    e.setdefault("extra_turno", 0)
+    e.setdefault("acciones_turno", [])
+    e.setdefault("pausa_desde", None)
+    e.setdefault("listos", [])
 
 
 def aplicar(e, yo, a):
@@ -485,7 +545,12 @@ def aplicar(e, yo, a):
     _actualizar(e)
     if f not in SIN_PRIORIDAD and _con_prioridad(e) != yo and not _preparacion(e):
         raise AccionInvalida(f"Tiene la prioridad {_nombre(e, _con_prioridad(e))}. Pulsa «Responder» para actuar.")
-    return f(e, yo, a)
+    turno = e["turno"]
+    privado = f(e, yo, a)
+    if f not in SIN_BONO and e["turno"] == turno:  # si la acción pasó el turno, el nuevo empieza sin bono
+        _sumar_tiempo(e, a)
+    _pausar_con_pila(e)
+    return privado
 
 
 # --- Vista ------------------------------------------------------------------
@@ -520,5 +585,6 @@ def vista(e, yo):
             "dano_letal": DANO_COMANDANTE_LETAL, "ganador": e["ganador"],
             "jugadores": jugadores, "log": e["log"][-80:], "prioridad": _con_prioridad(e),
             "preparacion": _preparacion(e), "restante": max(0, round(_restante(e))),
+            "pausado": bool(e["pausa_desde"]), "listos": e["listos"],
             "pila": [_ver(e, cid, e["cartas"][cid]["controlador"], yo) | {"controlador": e["cartas"][cid]["controlador"]}
                      for cid in e["pila"]]}

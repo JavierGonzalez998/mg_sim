@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% load mesa %}
+{% block title %}Invitación a una partida{% endblock %}
+{% block content %}
+  <div class="mx-auto max-w-lg">
+    <p class="etiqueta mb-2">Invitación · {{ unidos }}/5 jugadores</p>
+    <h1 class="mb-6 text-5xl">Mesa de <span class="cursiva">{{ partida.anfitrion.username }}</span></h1>
+
+    {% if error %}
+      <p class="mensaje error">{{ error }}</p>
+    {% else %}
+      <div class="tarjeta">
+        {% if user.is_authenticated %}
+          <p class="mb-5">{{ partida.anfitrion.username }} te invitó a su partida.</p>
+          <form method="post">
+            {% csrf_token %}
+            <button type="submit" class="btn-primario w-full py-3">Unirme como {{ user|nombre }}</button>
+          </form>
+        {% else %}
+          <p class="mb-5">{{ partida.anfitrion.username }} te invitó a su partida. Entra con tu cuenta para usar tus
+            mazos guardados, o juega sin cuenta pegando el enlace de un mazo de Moxfield.</p>
+          <a class="boton btn-primario mb-3 block w-full py-3 text-center"
+             href="{% url 'login' %}?next={{ request.path|urlencode }}">Iniciar sesión</a>
+          <a class="boton mb-6 block w-full py-3 text-center"
+             href="{% url 'registro' %}?next={{ request.path|urlencode }}">Crear cuenta</a>
+          <form method="post" class="border-t border-dashed border-linea pt-6">
+            {% csrf_token %}
+            <button type="submit" class="w-full py-3">Entrar como invitado</button>
+            <p class="mt-2 text-sm text-hueso-3">Jugarás como «Invitado N» y solo podrás usar un enlace de Moxfield.
+              La cuenta de invitado es solo para esta partida.</p>
+          </form>
+        {% endif %}
+      </div>
+    {% endif %}
+  </div>
+{% endblock %}

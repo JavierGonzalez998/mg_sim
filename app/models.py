@@ -1,7 +1,11 @@
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 from django.conf import settings
-from django.db import models
+from django.db import models, transaction
+from django.db.models.signals import post_delete, post_save
+from django.dispatch import receiver
+
+from user.models import Amistad
 
 # Orden en que se muestran los grupos del mazo; el primer tipo que coincida gana
 # (así "Artifact Creature" cuenta como criatura y "Artifact Land" como tierra).
@@ -118,3 +122,26 @@ class Jugador(models.Model):
 
     def __str__(self):
         return f"{self.usuario} en {self.partida}"
+
+
+# --- Notificaciones en tiempo real -------------------------------------------
+# Cuando cambia una invitación a partida o una solicitud de amistad, se avisa por WebSocket a los usuarios
+# afectados (app/consumers.py) para que recarguen su panel de notificaciones. Las señales cubren también
+# los borrados en cascada (cancelar o iniciar una partida borra sus invitaciones pendientes) y el admin.
+
+def avisar_notificaciones(*usuarios_ids):
+    def enviar():
+        capa = get_channel_layer()
+        for uid in set(usuarios_ids):
+            async_to_sync(capa.group_send)(f"usuario_{uid}", {"type": "notificaciones.cambio"})
+    transaction.on_commit(enviar)  # tras guardar, para que al recargar el panel ya se vea el cambio
+
+
+@receiver([post_save, post_delete], sender=Jugador, dispatch_uid="notificar_invitacion")
+def _cambio_invitacion(sender, instance, **kwargs):
+    avisar_notificaciones(instance.usuario_id)
+
+
+@receiver([post_save, post_delete], sender=Amistad, dispatch_uid="notificar_amistad")
+def _cambio_amistad(sender, instance, **kwargs):
+    avisar_notificaciones(instance.de_id, instance.a_id)

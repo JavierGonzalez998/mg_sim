@@ -1,3 +1,5 @@
+import re
+
 from django import forms
 from django.contrib import messages
 from django.contrib.auth import login
@@ -5,11 +7,12 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.forms import UserCreationForm
 from django.contrib.auth.models import User
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.views.decorators.http import require_POST
 
 from app.views import contexto_mazos, volver
 
-from .models import Amistad
+from .models import Amistad, Preferencias
 
 
 class RegistroForm(UserCreationForm):
@@ -29,8 +32,8 @@ def registro(request):
     form = RegistroForm(request.POST or None)
     if form.is_valid():
         login(request, form.save())
-        return redirect("perfil")
-    return render(request, "user/registro.html", {"form": form})
+        return volver(request, "perfil")  # p. ej. de vuelta al link de invitación que trajo al usuario
+    return render(request, "user/registro.html", {"form": form, "next": request.GET.get("next", "")})
 
 
 @login_required
@@ -42,7 +45,26 @@ def perfil(request):
         "recibidas": [am for am in amistades if not am.aceptada and am.a == yo],
         "enviadas": [am for am in amistades if not am.aceptada and am.de == yo],
     }
-    return render(request, "user/perfil.html", {**contexto_mazos(yo), **contexto})
+    fondo = Preferencias.objects.filter(usuario=yo).first()
+    return render(request, "user/perfil.html", {**contexto_mazos(yo), **contexto, "fondo": fondo})
+
+
+# Solo se aceptan artes de cartas de Scryfall (art crop), nunca una URL cualquiera.
+ARTE_SCRYFALL = re.compile(r"https://cards\.scryfall\.io/art_crop/(front|back)/[0-9a-f]/[0-9a-f]/[0-9a-f-]{36}\.jpg(\?\d+)?")
+
+
+@login_required
+@require_POST
+def cambiar_fondo(request):
+    """Fondo de la zona del usuario en la mesa: un arte de carta elegido en el perfil, o ninguno."""
+    url = request.POST.get("fondo", "").strip()
+    if url and not ARTE_SCRYFALL.fullmatch(url):
+        messages.error(request, "Elige uno de los artes de carta de la lista.")
+    else:
+        Preferencias.objects.update_or_create(usuario=request.user, defaults={
+            "fondo": url, "fondo_nombre": request.POST.get("nombre", "")[:200] if url else ""})
+        messages.success(request, "Cambiaste el fondo de tu zona de la mesa." if url else "Quitaste el fondo de tu zona.")
+    return redirect(reverse("perfil") + "#fondo")
 
 
 @login_required

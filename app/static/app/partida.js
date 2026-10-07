@@ -2,14 +2,13 @@
 // Mesa multijugador: recibe su vista por WebSocket (app/consumers.py) y envía acciones por POST.
 
 const raiz = document.getElementById("mesa");
-const { ws: URL_WS, accion: URL_ACCION, salir: URL_SALIR, csrf: CSRF } = raiz.dataset;
+const { ws: URL_WS, urlAccion: URL_ACCION, salir: URL_SALIR, csrf: CSRF } = raiz.dataset;
 const CAMPO = new Set(["campo", "tierras"]);
 const NOMBRE = { biblioteca: "Biblioteca", mano: "Mano", campo: "Campo de batalla", tierras: "Tierras",
                  cementerio: "Cementerio", exilio: "Exilio", mando: "Zona de mando", pila: "Pila" };
-const FASES = [["comienzo", "Comienzo"], ["principal1", "Principal 1"], ["combate", "Combate"],
-               ["principal2", "Principal 2"], ["final", "Final"]];
 
 let mesa = null, version = -1, porId = {}, dialogo = null, arrastrando = false;
+const FONDOS = JSON.parse(document.getElementById("fondos").textContent);  // id de usuario → arte para su zona
 let finTurno = 0, tiempoPedido = null;  // finTurno: en el reloj local (performance.now), para no depender de la hora del PC
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch]);
@@ -63,7 +62,7 @@ function htmlCarta(c, zona, j) {
   porId[c.id] = { c, zona, j };
   const clases = ["carta", c.girada && "girada", c.boca_abajo && "boca-abajo", c.ficha && "ficha"].filter(Boolean);
   const cara = c.oculta ? `<div class="dorso"></div>`
-    : c.imagen ? `<img src="${esc(c.imagen)}" alt="${esc(c.nombre)}" draggable="false">`
+    : c.imagen ? `<img src="${esc(c.imagen)}" alt="${esc(c.nombre)}" draggable="false" loading="lazy" onerror="sinImagen(this)">`
     : `<div class="texto">${esc(c.nombre)}</div>`;
   const chips = Object.entries(c.contadores || {}).map(([t, n]) => [`${t} ×${n}`]);
   if (c.comandante && c.impuesto) chips.push([`impuesto +${c.impuesto}`]);
@@ -76,27 +75,42 @@ function htmlCarta(c, zona, j) {
 
 const cartas = (lista, zona, j) => lista.map(c => htmlCarta(c, zona, j)).join("");
 
+// Si una imagen no carga (p. ej. Scryfall retiró el id de esa impresión), se pide otra vez a Scryfall por el nombre;
+// si tampoco carga, se muestra el nombre de la carta.
+function sinImagen(img) {
+  if (!img.dataset.porNombre) {
+    img.dataset.porNombre = "1";
+    img.src = `https://api.scryfall.com/cards/named?fuzzy=${encodeURIComponent(img.alt)}&format=image&version=normal`;
+    return;
+  }
+  img.replaceWith(Object.assign(document.createElement("div"), { className: "texto", textContent: img.alt }));
+}
+
 function htmlJugador(p, i) {
   const z = p.zonas, propio = i === mesa.yo;
   const boton = (stat, delta, txt, extra = "") =>
     `<button data-stat="${stat}" data-jugador="${i}" data-delta="${delta}" ${extra} aria-label="${stat} ${delta}">${txt}</button>`;
+  // Valor del contador más los clics que aún no se enviaron (ver sumarStat).
+  const valor = (stat, n, carta = "") => n + (pendiente.get(`${stat}|${i}|${carta}`) || 0);
   const pila = (zona, contenido) =>
     `<div class="zona pila" data-zona="${zona}" data-jugador="${i}" title="${NOMBRE[zona]}">${contenido}</div>`;
-  const tope = zona => z[zona].length ? htmlCarta(z[zona].at(-1), zona, i) : "";
+  // El cementerio y el exilio vacíos muestran un hueco: siguen siendo visibles para soltar cartas.
+  const tope = zona => z[zona].length ? htmlCarta(z[zona].at(-1), zona, i) : `<div class="hueco"></div>`;
   // Daño recibido de cada comandante rival (por comandante, así los compañeros cuentan por separado).
   const rivales = mesa.comandantes.filter(c => c.dueno !== i);
   const cmdr = !mesa.dano_comandante || !rivales.length ? "" : `<span class="cmdr">Daño de comandante: ${rivales.map(c => {
-    const n = p.dano_comandante[c.id] || 0;
+    const n = valor("dano_comandante", p.dano_comandante[c.id] || 0, c.id);
     return `<span class="${n >= mesa.dano_letal ? "letal" : ""}" title="De ${esc(mesa.jugadores[c.dueno].nombre)}">${esc(c.nombre)}
       ${boton("dano_comandante", -1, "−", `data-carta="${c.id}"`)}<b>${n}</b>${boton("dano_comandante", 1, "+", `data-carta="${c.id}"`)}</span>`;
   }).join(" · ")}</span>`;
   return `
-    <section class="jugador ${propio ? "propio" : ""} ${i === mesa.activo ? "activo" : ""} ${p.rindio ? "rindio" : ""}">
+    <section class="jugador ${propio ? "propio" : ""} ${i === mesa.activo ? "activo" : ""} ${p.rindio ? "rindio" : ""}
+      ${FONDOS[p.id] ? "con-fondo" : ""}" ${FONDOS[p.id] ? `style="--fondo: url('${esc(FONDOS[p.id])}')"` : ""}>
       <header>
         <strong>${esc(p.nombre)}${p.rindio ? " (se rindió)" : ""}</strong>
         ${i === mesa.prioridad && !mesa.preparacion ? `<span class="prio">✋ prioridad</span>` : ""}
-        <span>♥ ${boton("vida", -1, "−")}<b>${p.vida}</b>${boton("vida", 1, "+")}</span>
-        <span>☠ ${boton("veneno", -1, "−")}<b>${p.veneno}</b>${boton("veneno", 1, "+")}</span>
+        <span>♥ ${boton("vida", -1, "−")}<b>${valor("vida", p.vida)}</b>${boton("vida", 1, "+")}</span>
+        <span>☠ ${boton("veneno", -1, "−")}<b>${valor("veneno", p.veneno)}</b>${boton("veneno", 1, "+")}</span>
         ${propio ? "" : `<span>✋ ${z.mano}</span>`}
         <span>📚 ${z.biblioteca}</span>
         ${p.mulligans ? `<span>Mulligans: ${p.mulligans}</span>` : ""}
@@ -137,10 +151,16 @@ function renderLateral() {
     : `<p>Turno ${mesa.turno} · juega <b>${esc(mesa.jugadores[mesa.activo].nombre)}</b>${mesa.formato ? ` · ${esc(mesa.formato)}` : ""}
        · <span id="reloj"></span></p>`;
   reloj();
-  $("#fases").innerHTML = FASES.map(([f, n]) =>
-    `<button data-fase="${f}" class="${f === mesa.fase ? "actual" : ""}" ${miTurno ? "" : "disabled"}>${n}</button>`).join("");
-  $("#pasar").disabled = !miTurno;
-  $("#prioridad").innerHTML = mesa.preparacion ? "Preparación: todos pueden hacer sus mulligans."
+  // Un solo botón. En la preparación cada jugador confirma «Empezar partida» (el turno 1 empieza cuando todos
+  // confirman; pulsarlo otra vez cancela); después, el jugador activo lo usa para pasar el turno.
+  const listo = mesa.listos.includes(mesa.yo);
+  $("#pasar").disabled = mesa.preparacion ? !vivo : !miTurno;
+  $("#pasar").innerHTML = `<strong>${!mesa.preparacion ? "Pasar turno" : listo ? "Listo ✓ (cancelar)" : "Empezar partida"}</strong>`;
+  $("#pasar").title = mesa.preparacion ? "Cuando todos lo pulsen se cierran los mulligans y empieza el turno 1" : "";
+  const vivos = mesa.jugadores.filter(p => !p.rindio);
+  $("#prioridad").innerHTML = mesa.preparacion
+    ? `Preparación: hagan sus mulligans. Listos ${mesa.listos.length}/${vivos.length}` +
+      (mesa.listos.length ? `: <b>${mesa.listos.map(i => esc(mesa.jugadores[i].nombre)).join(", ")}</b>` : "")
     : `Prioridad: <b>${esc(mesa.jugadores[mesa.prioridad].nombre)}</b>`;
   // La pila se muestra con la carta de arriba primero.
   $("#pila").dataset.jugador = mesa.yo;
@@ -148,6 +168,7 @@ function renderLateral() {
   $("#responder").hidden = !vivo || tengo;
   $("#pasar-prioridad").hidden = !vivo || mesa.preparacion || mesa.prioridad !== mesa.yo || mesa.activo === mesa.yo;
   for (const b of document.querySelectorAll(".botones button:not([data-accion=rendirse])")) b.disabled = !tengo;
+  $('[data-accion="mulligan"]').hidden = !mesa.preparacion;  // solo antes de empezar
   const log = $("#log");
   const alFinal = log.scrollTop + log.clientHeight >= log.scrollHeight - 30;
   log.innerHTML = mesa.log.map(l =>
@@ -159,10 +180,12 @@ function renderLateral() {
 function reloj() {
   const el = $("#reloj");
   if (!mesa || !el) return;
-  const s = Math.max(0, Math.ceil((finTurno - performance.now()) / 1000));
-  el.textContent = `⏱ ${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
-  el.classList.toggle("prio", s <= 60);
-  if (s === 0 && tiempoPedido !== mesa.turno) {
+  // Con algo en la pila el servidor detiene el reloj: se muestra congelado.
+  const s = mesa.pausado ? mesa.restante : Math.max(0, Math.ceil((finTurno - performance.now()) / 1000));
+  el.textContent = `${mesa.pausado ? "⏸" : "⏱"} ${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+  el.title = mesa.pausado ? "Tiempo detenido hasta que se resuelva la pila" : "";
+  el.classList.toggle("prio", s <= 60 && !mesa.pausado);
+  if (s === 0 && !mesa.pausado && tiempoPedido !== mesa.turno) {
     tiempoPedido = mesa.turno;
     accion({ accion: "tiempo" }, true).then(d => { if (!d) setTimeout(() => (tiempoPedido = null), 3000); });
   }
@@ -177,6 +200,9 @@ function renderDialogo() {
     const p = mesa.jugadores[dialogo.jugador];
     titulo = `${NOMBRE[dialogo.zona]} de ${p.nombre}`;
     html = cartas(p.zonas[dialogo.zona], dialogo.zona, dialogo.jugador);
+  } else if (dialogo.tipo === "oraculo") {
+    titulo = dialogo.nombre;
+    html = dialogo.html;
   } else {
     titulo = `Tu biblioteca: ${dialogo.cartas.length} carta(s) a la vista (la primera es la de arriba)`;
     html = cartas(dialogo.cartas, "biblioteca", mesa.yo);
@@ -201,6 +227,55 @@ async function mover(id, zona, extra = {}) {
   return d;
 }
 
+// Texto Oracle y rulings oficiales desde la API pública de Scryfall.
+async function verOraculo(nombre) {
+  dialogo = { tipo: "oraculo", nombre, html: "<p>Buscando en Scryfall…</p>" };
+  renderDialogo();
+  let html;
+  try {
+    const r = await fetch(`https://api.scryfall.com/cards/named?fuzzy=${encodeURIComponent(nombre)}`);
+    const c = await r.json();
+    if (!r.ok) throw new Error(c.details || "No se encontró la carta.");
+    const rulings = (await (await fetch(c.rulings_uri)).json()).data;
+    const caras = (c.card_faces || [c]).map(f => `
+      <h4>${esc(f.name)} <span class="coste">${esc(f.mana_cost || "")}</span></h4>
+      <p class="tipo">${esc(f.type_line || c.type_line)}</p>
+      <p class="texto-oracle">${esc(f.oracle_text || "")}</p>
+      ${f.power ? `<p><b>${esc(f.power)}/${esc(f.toughness)}</b></p>` : ""}${f.loyalty ? `<p>Lealtad: <b>${esc(f.loyalty)}</b></p>` : ""}`).join("");
+    const imagen = c.image_uris?.normal || c.card_faces?.[0]?.image_uris?.normal;
+    html = `<div class="oraculo">${imagen ? `<img src="${esc(imagen)}" alt="${esc(c.name)}">` : ""}<div>${caras}
+      <h4>Rulings</h4>${rulings.length ? `<ul class="rulings">${rulings.map(x =>
+        `<li><time>${esc(x.published_at)}</time> ${esc(x.comment)}</li>`).join("")}</ul>` : "<p>Sin rulings oficiales.</p>"}
+      <p><a href="${esc(c.scryfall_uri)}" target="_blank" rel="noopener">Ver en Scryfall →</a></p></div></div>`;
+  } catch (err) {
+    html = `<p>${esc(err.message || "No se pudo consultar Scryfall.")}</p>`;
+  }
+  if (dialogo?.tipo === "oraculo" && dialogo.nombre === nombre) { dialogo.html = html; renderDialogo(); }
+}
+
+// Contadores (vida, veneno, daño de comandante): el número cambia al instante y los clics seguidos se envían juntos.
+// Así no se pierden clics rápidos aunque la mesa se repinte entre medio.
+const pendiente = new Map();  // "stat|jugador|carta" → delta sin enviar
+let envioStats;
+
+function sumarStat(b) {
+  const { stat, jugador, carta = "", delta } = b.dataset;
+  const clave = `${stat}|${jugador}|${carta}`;
+  pendiente.set(clave, (pendiente.get(clave) || 0) + +delta);
+  const n = b.parentElement.querySelector("b");
+  n.textContent = +n.textContent + +delta;
+  clearTimeout(envioStats);
+  envioStats = setTimeout(enviarStats, 350);
+}
+
+async function enviarStats() {
+  for (const [clave, delta] of [...pendiente]) {
+    pendiente.delete(clave);
+    const [stat, jugador, carta] = clave.split("|");
+    if (delta) await accion({ accion: stat, jugador: +jugador, delta, ...(carta && { carta }) });
+  }
+}
+
 // --- Acciones de botones y menús -------------------------------------------
 
 function pedirN(texto, f, porDefecto = 1) {
@@ -209,7 +284,7 @@ function pedirN(texto, f, porDefecto = 1) {
 }
 
 const BOTONES = {
-  pasar_turno: () => accion({ accion: "pasar_turno" }),
+  pasar_turno: () => accion({ accion: mesa.preparacion ? "listo" : "pasar_turno" }),
   responder: () => accion({ accion: "responder" }),
   pasar_prioridad: () => accion({ accion: "pasar_prioridad" }),
   robar: () => accion({ accion: "robar" }),
@@ -251,13 +326,19 @@ function opcionesCarta({ c, zona, j }) {
   } else if (zona === "mano") {
     if (c.tierra) ops.push(["Jugar", () => mover(id, "tierras", { jugador: yo })]);
     else ops.push(["Lanzar (a la pila)", () => mover(id, "pila")], ["Poner en el campo", () => mover(id, "campo", { jugador: yo })]);
-    ops.push(["Jugar boca abajo", () => mover(id, "campo", { jugador: yo, boca_abajo: true })]);
+    ops.push(["Jugar boca abajo (transfigurar, disfrazar…)", () => mover(id, "campo", { jugador: yo, boca_abajo: true })]);
+    ops.push(["Exiliar boca abajo (presagio…)", () => mover(id, "exilio", { boca_abajo: true })]);
     ops.push(["Revelar", hacer("revelar")]);
   } else if (zona === "pila") {
     ops.push(["Resolver (al campo)", () => mover(id, c.tierra ? "tierras" : "campo", { jugador: j })]);
-  } else if (zona !== "biblioteca") {
+  } else if (zona === "biblioteca") {
+    ops.push(["Al campo boca abajo (manifestar…)", () => mover(id, "campo", { jugador: yo, boca_abajo: true })]);
+    ops.push(["Exiliar boca abajo", () => mover(id, "exilio", { boca_abajo: true })]);
+  } else {
+    if (zona === "exilio") ops.push([c.boca_abajo || c.oculta ? "Poner boca arriba" : "Poner boca abajo", hacer("boca_abajo")]);
     ops.push(["Añadir contador…", otroContador]);
   }
+  if (!c.oculta) ops.push(["Oracle y rulings", () => verOraculo(c.nombre)]);
   for (const t of Object.keys(c.contadores || {})) ops.push([`Quitar un contador ${t}`, hacer("contador", { tipo: t, delta: -1 })]);
   ops.push(null);
   for (const destino of ["pila", "mano", "campo", "tierras", "cementerio", "exilio", "mando"]) {
@@ -273,7 +354,7 @@ function opcionesCarta({ c, zona, j }) {
 function opcionesBiblioteca() {
   return [["Robar", BOTONES.robar], ["Robar varias…", BOTONES.robar_n], ["Mirar arriba…", BOTONES.mirar],
           ["Buscar en la biblioteca", BOTONES.buscar], ["Moler…", BOTONES.moler], null,
-          ["Barajar", BOTONES.barajar], ["Mulligan", BOTONES.mulligan]];
+          ["Barajar", BOTONES.barajar], ...(mesa.preparacion ? [["Mulligan", BOTONES.mulligan]] : [])];
 }
 
 function abrirMenu(ops, x, y) {
@@ -298,25 +379,43 @@ document.addEventListener("click", e => {
   if (!e.target.closest("#menu")) cerrarMenu();
   const boton = e.target.closest("[data-accion]");
   if (boton) return BOTONES[boton.dataset.accion]?.();
-  const fase = e.target.closest("[data-fase]");
-  if (fase) return accion({ accion: "fase", fase: fase.dataset.fase });
   const stat = e.target.closest("[data-stat]");
-  if (stat) return accion({ accion: stat.dataset.stat, jugador: +stat.dataset.jugador,
-                            delta: +stat.dataset.delta, carta: stat.dataset.carta });
-  const carta = e.target.closest(".carta"), info = carta && porId[carta.dataset.id];
-  if (info && CAMPO.has(info.zona)) return accion({ accion: "girar", carta: info.c.id });
+  if (stat) { if (e.detail === 0) sumarStat(stat); return; }  // con ratón ya se sumó en pointerdown; esto es teclado
   const pila = e.target.closest(".pila");
-  if (pila) {
-    const j = +pila.dataset.jugador, zona = pila.dataset.zona;
-    if (zona === "biblioteca" && j === mesa.yo) return BOTONES.robar();
-    if (zona !== "biblioteca") { dialogo = { tipo: "zona", jugador: j, zona }; renderDialogo(); }
+  if (pila && pila.dataset.zona !== "biblioteca") {
+    dialogo = { tipo: "zona", jugador: +pila.dataset.jugador, zona: pila.dataset.zona };
+    renderDialogo();
   }
 });
 
+// Los contadores responden al presionar (no al soltar): si la mesa se repinta entre medio, el clic no se pierde.
+document.addEventListener("pointerdown", e => {
+  const stat = e.button === 0 && e.target.closest("[data-stat]");
+  if (stat) { e.preventDefault(); sumarStat(stat); }
+});
+
+// Doble clic: en la mano lanza (tierras: juega), en el campo gira o endereza, en tu biblioteca roba.
 document.addEventListener("dblclick", e => {
   const carta = e.target.closest(".carta"), info = carta && porId[carta.dataset.id];
-  if (info?.zona === "mano") info.c.tierra ? mover(info.c.id, "tierras", { jugador: mesa.yo }) : mover(info.c.id, "pila");
+  if (info?.zona === "mano") return info.c.tierra ? mover(info.c.id, "tierras", { jugador: mesa.yo }) : mover(info.c.id, "pila");
+  if (info && CAMPO.has(info.zona)) return accion({ accion: "girar", carta: info.c.id });
+  const biblioteca = e.target.closest('.pila[data-zona="biblioteca"]');
+  if (biblioteca && +biblioteca.dataset.jugador === mesa.yo) BOTONES.robar();
 });
+
+// Atajos con el ratón sobre una carta (R roba sin necesidad de carta).
+let sobre = null;  // id de la carta bajo el ratón
+const ATAJOS = {
+  t: ({ c, zona }) => CAMPO.has(zona) && accion({ accion: "girar", carta: c.id }),
+  c: ({ c }) => mover(c.id, "cementerio"),
+  e: ({ c }) => mover(c.id, "exilio"),
+  m: ({ c }) => mover(c.id, "mano"),
+  p: ({ c }) => mover(c.id, "pila"),
+  b: ({ c, zona }) => zona === "mano" || zona === "biblioteca"
+    ? mover(c.id, "campo", { jugador: mesa.yo, boca_abajo: true })
+    : accion({ accion: "boca_abajo", carta: c.id }),
+  o: ({ c }) => !c.oculta && verOraculo(c.nombre),
+};
 
 document.addEventListener("contextmenu", e => {
   const carta = e.target.closest(".carta"), info = carta && porId[carta.dataset.id];
@@ -348,6 +447,7 @@ document.addEventListener("drop", e => {
 });
 
 document.addEventListener("mouseover", e => {
+  sobre = e.target.closest(".carta")?.dataset.id ?? null;
   const vista = $("#vista");
   const img = e.target.closest(".carta")?.querySelector("img")?.src || e.target.closest("#log li")?.dataset.img;
   vista.hidden = !img;
@@ -361,6 +461,17 @@ $("#chat").onsubmit = e => {
   if (input.value.trim()) accion({ accion: "chat", texto: input.value });
   input.value = "";
 };
-document.addEventListener("keydown", e => { if (e.key === "Escape") cerrarMenu(); });
+$("#oraculo").onsubmit = e => {
+  e.preventDefault();
+  const nombre = e.target.carta.value.trim();
+  if (nombre) verOraculo(nombre);
+};
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape") return cerrarMenu();
+  if (e.ctrlKey || e.metaKey || e.altKey || e.repeat || e.target.closest("input, textarea, select")) return;
+  const k = e.key.toLowerCase(), info = sobre && porId[sobre];
+  if (k === "r") return BOTONES.robar();
+  if (info && ATAJOS[k]) { e.preventDefault(); ATAJOS[k](info); }
+});
 
 conectar();

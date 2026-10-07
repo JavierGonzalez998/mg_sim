@@ -32,3 +32,26 @@ class PartidaConsumer(AsyncJsonWebsocketConsumer):
     @database_sync_to_async
     def estado(self):
         return estado_para(self.pk, self.scope["user"])
+
+
+class NotificacionesConsumer(AsyncJsonWebsocketConsumer):
+    """Avisa al usuario cuando cambian sus invitaciones o solicitudes (ver avisar_notificaciones en models.py).
+
+    Solo manda el aviso; el navegador pide el panel ya renderizado a /notificaciones/.
+    """
+
+    async def connect(self):
+        usuario = self.scope["user"]
+        if not usuario.is_authenticated:
+            await self.close()
+            return
+        self.grupo = f"usuario_{usuario.pk}"
+        await self.channel_layer.group_add(self.grupo, self.channel_name)
+        await self.accept()
+
+    async def disconnect(self, code):
+        if hasattr(self, "grupo"):
+            await self.channel_layer.group_discard(self.grupo, self.channel_name)
+
+    async def notificaciones_cambio(self, event):
+        await self.send_json({"notificaciones": True})

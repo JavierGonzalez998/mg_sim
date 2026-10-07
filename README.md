@@ -10,6 +10,8 @@ partidas de 2 a 5 jugadores con amigos, en tiempo real.
 - **Probar mazos** (`/test/`): mesa individual para robar, hacer mulligan y jugar turnos de prueba.
 - **Jugar con amigos** (`/game/`): sala de espera con invitaciones, elección de mazo (guardado o por enlace) y partida
   en tiempo real por WebSocket. Todos los mazos deben ser del mismo formato que el del anfitrión.
+  - **Link de invitación** para compartir con cualquiera. Sin cuenta se juega como «Invitado N» (cuenta temporal sin
+    contraseña, `app/invitados.py`) usando solo enlaces de Moxfield, y con acceso únicamente a su partida.
   - La mesa no aplica las reglas (como una mesa real), pero sí protege la información oculta: nadie ve la mano ni la
     biblioteca de otro jugador.
   - Turnos y fases, mover cartas entre zonas, girar, transformar, boca abajo, contadores, fichas, cambio de control,

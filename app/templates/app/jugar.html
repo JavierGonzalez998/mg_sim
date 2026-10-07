@@ -41,9 +41,9 @@
   <section class="zona" data-zona="mando" style="grid-area: mando"><h2>Zona de mando</h2><div class="cartas"></div></section>
   <section class="zona" data-zona="campo" style="grid-area: campo"><h2>Campo de batalla</h2><div class="cartas"></div></section>
   <section class="zona" data-zona="tierras" style="grid-area: tierras"><h2>Tierras</h2><div class="cartas"></div></section>
-  <section class="zona" data-zona="biblioteca" style="grid-area: biblioteca" title="Clic para robar">
+  <section class="zona" data-zona="biblioteca" style="grid-area: biblioteca" title="Doble clic para robar">
     <h2>Biblioteca</h2><div class="dorso" id="biblioteca"></div>
-    <p class="pista">Clic: robar. Soltar: arriba. Shift+soltar: abajo.</p>
+    <p class="pista">Doble clic: robar. Soltar: arriba. Shift+soltar: abajo.</p>
   </section>
   <section class="zona" data-zona="cementerio" style="grid-area: cementerio"><h2>Cementerio</h2><div class="cartas"></div></section>
   <section class="zona" data-zona="exilio" style="grid-area: exilio"><h2>Exilio</h2><div class="cartas"></div></section>
@@ -95,6 +95,11 @@ function render() {
       img.src = cartas[id].imagen;
       img.alt = img.title = cartas[id].nombre;
       img.draggable = true;
+      img.onerror = () => {  // id de Scryfall retirado: se pide la imagen por nombre (una sola vez)
+        if (img.dataset.porNombre) return;
+        img.dataset.porNombre = "1";
+        img.src = `https://api.scryfall.com/cards/named?fuzzy=${encodeURIComponent(cartas[id].nombre)}&format=image&version=normal`;
+      };
       img.dataset.id = id;
       return img;
     }));
@@ -125,15 +130,13 @@ tablero.addEventListener("drop", e => {
   z.classList.remove("encima");
   mover(Number(e.dataTransfer.getData("text/plain")), z.dataset.zona, e.shiftKey);
 });
-tablero.addEventListener("click", e => {
+// Doble clic (como en la mesa multijugador): en la mano juega, en el campo gira o endereza, en la biblioteca roba.
+tablero.addEventListener("dblclick", e => {
   const c = e.target.closest(".carta");
   const zona = e.target.closest(".zona")?.dataset.zona;
   if (zona === "biblioteca") { robar(1); render(); }
+  else if (c && zona === "mano") mover(Number(c.dataset.id), cartas[c.dataset.id].tierra ? "tierras" : "campo");
   else if (c && (zona === "campo" || zona === "tierras")) { cartas[c.dataset.id].girada = !cartas[c.dataset.id].girada; render(); }
-});
-tablero.addEventListener("dblclick", e => {
-  const c = e.target.closest('[data-zona="mano"] .carta');
-  if (c) mover(Number(c.dataset.id), cartas[c.dataset.id].tierra ? "tierras" : "campo");
 });
 tablero.addEventListener("mouseover", e => {
   const c = e.target.closest(".carta");

@@ -1,0 +1,4 @@
+{% for inv in invitaciones %}
+  <p class="mensaje invitacion" role="status">{{ inv.partida.anfitrion.username }} te invitó a una partida.
+    <a href="{% url 'sala' inv.partida.pk %}" class="ml-1 font-mono text-xs uppercase">Ver invitación →</a></p>
+{% endfor %}

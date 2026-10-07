@@ -7,19 +7,25 @@ from urllib.request import Request, urlopen
 from django import forms
 from django.contrib import messages
 from django.conf import settings
+from django.contrib.auth import login
 from django.contrib.auth.decorators import login_required
+from django.core import signing
 from django.db import transaction
 from django.db.models import Q, Sum
 from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
+from django.template.loader import render_to_string
 from django.utils.html import escape
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.safestring import mark_safe
 from django.views.decorators.http import require_POST
 
-from user.models import Amistad
+from user.models import Amistad, Preferencias
 
 from . import juego
+from .context_processors import invitaciones as invitaciones_y_solicitudes
+from .invitados import crear_invitado, es_invitado, nombre_libre, nombre_visible
 from .models import ORDEN_CATEGORIAS, Carta, Jugador, Mazo, Partida, avisar_cambio
 
 # Tableros de Moxfield que importamos y su zona en nuestro mazo
@@ -107,7 +113,7 @@ def volver(request, por_defecto="mazos"):
 
 def mazo_elegido(form):
     """Con un ProbarForm válido: (nombre, cartas, formato) del mazo o del enlace; si falla, deja el error en el form."""
-    mazo = form.cleaned_data["mazo"]
+    mazo = form.cleaned_data.get("mazo")  # los invitados no tienen ese campo
     if mazo:
         return mazo.nombre, mazo.cartas.all(), mazo.formato
     cargado, error = cargar_moxfield(form.cleaned_data["url"])
@@ -284,12 +290,39 @@ def amigos_de(usuario):
 def partidas(request):
     mias = (Partida.objects.filter(jugadores__usuario=request.user, jugadores__aceptada=True)
             .exclude(estado="terminada").select_related("anfitrion").order_by("-creada"))
-    return render(request, "app/partidas.html", {"partidas": mias})
+    return render(request, "app/partidas.html", {"partidas": mias, "en_curso": partida_en_curso(request.user, mias)})
+
+
+@login_required
+def notificaciones(request):
+    """Panel de notificaciones ya renderizado, para actualizarlo en vivo (lo pide base.html al recibir el aviso
+    de NotificacionesConsumer). `desde` es la página abierta, a la que se vuelve tras aceptar o rechazar."""
+    contexto = {"volver_a": request.GET.get("desde", "/")}  # el resto lo pone el context processor
+    return JsonResponse({
+        "total": invitaciones_y_solicitudes(request)["notificaciones"],
+        "panel": render_to_string("app/_notificaciones.html", contexto, request),
+        "avisos": render_to_string("app/_avisos_invitacion.html", contexto, request),
+    })
+
+
+def partida_en_curso(usuario, partidas=None):
+    """La sala o partida sin terminar en la que está el usuario, o None. No cuenta aquellas en las que se rindió."""
+    if partidas is None:
+        partidas = (Partida.objects.filter(jugadores__usuario=usuario, jugadores__aceptada=True)
+                    .exclude(estado="terminada").order_by("-creada"))
+    for p in partidas:
+        if p.estado == "sala" or not any(j["id"] == usuario.id and j["rindio"] for j in p.juego["jugadores"]):
+            return p
+    return None
 
 
 @login_required
 @require_POST
 def crear_partida(request):
+    # Una partida a la vez: quien está en una sala o partida (sea anfitrión o invitado) no puede crear otra.
+    if en_curso := partida_en_curso(request.user):
+        messages.error(request, "Ya estás en una partida. Termínala, ríndete o sal de la sala antes de crear otra.")
+        return redirect("sala", en_curso.pk)
     partida = Partida.objects.create(anfitrion=request.user)
     Jugador.objects.create(partida=partida, usuario=request.user, aceptada=True)
     return redirect("sala", partida.pk)
@@ -302,7 +335,10 @@ def sala(request, pk):
     if partida.estado != "sala":
         if not yo.aceptada:
             raise Http404
-        return render(request, "app/partida.html", {"partida": partida})
+        # Fondo de cada jugador registrado para su zona de la mesa (lo eligen en su perfil).
+        fondos = dict(Preferencias.objects.filter(usuario__participaciones__partida=partida, usuario__participaciones__aceptada=True)
+                      .exclude(fondo="").values_list("usuario_id", "fondo"))
+        return render(request, "app/partida.html", {"partida": partida, "fondos": fondos})
     jugadores = list(partida.jugadores.select_related("usuario").order_by("pk"))
     en_sala = {j.usuario_id for j in jugadores}
     es_anfitrion = partida.anfitrion_id == request.user.id
@@ -310,7 +346,8 @@ def sala(request, pk):
     return render(request, "app/sala.html", {
         "partida": partida, "yo": yo, "jugadores": jugadores, "es_anfitrion": es_anfitrion,
         "invitables": invitables, "hay_lugar": len(jugadores) < Partida.MAX_JUGADORES,
-        "form_mazo": ProbarForm(usuario=request.user), "problemas": partida.problemas_para_iniciar(),
+        "form_mazo": form_mazo(request.user), "problemas": partida.problemas_para_iniciar(),
+        "link": link_invitacion(request, partida) if es_anfitrion else None,
     })
 
 
@@ -329,6 +366,53 @@ def invitar(request, pk):
             partida.tocar()
             messages.success(request, f"Invitaste a {amigo.username}.")
     return redirect("sala", pk)
+
+
+def form_mazo(usuario, datos=None):
+    """Elegir mazo en la sala. Los invitados no tienen mazos guardados: solo pueden pegar un enlace de Moxfield."""
+    form = ProbarForm(datos, usuario=usuario)
+    if es_invitado(usuario):
+        del form.fields["mazo"]
+        form.fields["url"].label = "Enlace de tu mazo en Moxfield"
+    return form
+
+
+# --- Links de invitación ------------------------------------------------------
+# El link lleva el id de la partida firmado con la SECRET_KEY: no se puede adivinar ni alterar.
+
+SAL_INVITACION = "app.invitacion"
+
+
+def link_invitacion(request, partida):
+    token = signing.dumps(partida.pk, salt=SAL_INVITACION)
+    return request.build_absolute_uri(reverse("invitacion", args=[token]))
+
+
+def invitacion(request, token):
+    """Página del link: usuarios con sesión se unen con su cuenta; sin sesión pueden iniciarla, registrarse o
+    entrar como invitado (cuenta temporal «Invitado N» que solo puede usar enlaces de Moxfield)."""
+    try:
+        pk = signing.loads(token, salt=SAL_INVITACION)
+    except signing.BadSignature:
+        raise Http404
+    partida = get_object_or_404(Partida.objects.select_related("anfitrion"), pk=pk)
+    yo = partida.jugadores.filter(usuario=request.user).first() if request.user.is_authenticated else None
+    if yo and yo.aceptada:
+        return redirect("sala", pk)
+    unidos = partida.jugadores.filter(aceptada=True).count()
+    error = ("Esta partida ya empezó o terminó." if partida.estado != "sala"
+             else "La sala está llena." if unidos >= Partida.MAX_JUGADORES else "")
+    if request.method == "POST" and not error:
+        # Los invitados se numeran dentro de cada partida: «Invitado 1», «Invitado 2»…
+        if not request.user.is_authenticated:
+            login(request, crear_invitado(nombre_libre(partida)), backend="django.contrib.auth.backends.ModelBackend")
+        elif es_invitado(request.user):  # un invitado que llega con el link de otra partida
+            request.user.first_name = nombre_libre(partida)
+            request.user.save(update_fields=["first_name"])
+        Jugador.objects.update_or_create(partida=partida, usuario=request.user, defaults={"aceptada": True})
+        partida.tocar()
+        return redirect("sala", pk)
+    return render(request, "app/invitacion.html", {"partida": partida, "unidos": unidos, "error": error})
 
 
 @login_required
@@ -365,7 +449,7 @@ def elegir_mazo(request, pk):
     partida, yo = _mi_jugador(request, pk)
     if not _en_sala(request, partida):
         return redirect("sala", pk)
-    form = ProbarForm(request.POST, usuario=request.user)
+    form = form_mazo(request.user, request.POST)
     cargado = mazo_elegido(form) if form.is_valid() else None
     if not form.is_valid():
         messages.error(request, " ".join(e for errores in form.errors.values() for e in errores))
@@ -404,7 +488,7 @@ def iniciar(request, pk):
             with transaction.atomic():
                 partida.jugadores.filter(aceptada=False).delete()
                 unidos = partida.jugadores.select_related("usuario")
-                partida.juego = juego.crear([(j.usuario_id, j.usuario.username, j.cartas) for j in unidos],
+                partida.juego = juego.crear([(j.usuario_id, nombre_visible(j.usuario), j.cartas) for j in unidos],
                                             partida.formato)
                 partida.estado = "jugando"
                 partida.save()

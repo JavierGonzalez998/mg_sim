@@ -28,3 +28,13 @@ class Amistad(models.Model):
 
     def otro(self, usuario):
         return self.a if self.de == usuario else self.de
+
+
+class Preferencias(models.Model):
+    """Ajustes del usuario registrado. `fondo`: arte de carta (art crop de Scryfall) para su zona de la mesa."""
+    usuario = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="preferencias")
+    fondo = models.URLField(max_length=300, blank=True)
+    fondo_nombre = models.CharField(max_length=200, blank=True)  # carta y artista, para mostrarlo en el perfil
+
+    def __str__(self):
+        return f"Preferencias de {self.usuario}"

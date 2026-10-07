@@ -1,4 +1,4 @@
-{% load static %}<!doctype html>
+{% load static mesa %}<!doctype html>
 <html lang="es">
 <head>
   <meta charset="utf-8">
@@ -21,50 +21,41 @@
     </a>
     {% if user.is_authenticated %}
       <button popovertarget="notificaciones" class="btn-chico ml-auto" aria-label="Notificaciones ({{ notificaciones }})">
-        🔔{% if notificaciones %} <span class="text-bermellon-2">{{ notificaciones }}</span>{% endif %}
+        🔔 <span id="contador-notificaciones" class="text-bermellon-2">{{ notificaciones|default:"" }}</span>
       </button>
-      <a href="{% url 'perfil' %}" class="etiqueta no-underline hover:text-hueso">{{ user.username }}</a>
+      {% if es_invitado %}<span class="etiqueta">{{ user|nombre }}</span>
+      {% else %}<a href="{% url 'perfil' %}" class="etiqueta no-underline hover:text-hueso">{{ user.username }}</a>{% endif %}
     {% endif %}
   </header>
 
   {% if user.is_authenticated %}
     <div id="notificaciones" popover
          class="fixed inset-auto top-16 right-4 m-0 max-h-[80vh] w-[min(22rem,calc(100vw-2rem))] overflow-auto border border-linea bg-tinta-2 p-4 text-hueso shadow-[6px_6px_0_0_rgb(0_0_0/.55)]">
-      <p class="etiqueta mb-2">Partidas</p>
-      <ul class="mb-5">
-        {% for inv in invitaciones %}
-          <li class="fila">
-            <span class="mr-auto">{{ inv.partida.anfitrion.username }} te invitó a una partida</span>
-            <form method="post" action="{% url 'unirse' inv.partida.pk %}">
-              {% csrf_token %}<button type="submit" class="btn-primario btn-chico">Unirse</button>
-            </form>
-            <form method="post" action="{% url 'salir' inv.partida.pk %}">
-              {% csrf_token %}<button type="submit" class="btn-chico">Rechazar</button>
-            </form>
-          </li>
-        {% empty %}
-          <li class="text-sm text-hueso-3">Sin invitaciones.</li>
-        {% endfor %}
-      </ul>
-      <p class="etiqueta mb-2">Solicitudes de amistad</p>
-      <ul>
-        {% for am in solicitudes %}
-          <li class="fila">
-            <a href="{% url 'ver_perfil' am.de.username %}" class="mr-auto">{{ am.de.username }}</a>
-            <form method="post" action="{% url 'aceptar_solicitud' am.pk %}">
-              {% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
-              <button type="submit" class="btn-primario btn-chico">Aceptar</button>
-            </form>
-            <form method="post" action="{% url 'eliminar_amistad' am.pk %}">
-              {% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
-              <button type="submit" class="btn-chico">Rechazar</button>
-            </form>
-          </li>
-        {% empty %}
-          <li class="text-sm text-hueso-3">Sin solicitudes.</li>
-        {% endfor %}
-      </ul>
+      {% include "app/_notificaciones.html" with volver_a=request.get_full_path %}
     </div>
+    <script>
+      // Notificaciones en vivo: el servidor avisa por WebSocket (NotificacionesConsumer) y aquí se recarga el panel.
+      (() => {
+        async function actualizar() {
+          const r = await fetch(`{% url 'notificaciones' %}?desde=${encodeURIComponent(location.pathname + location.search)}`);
+          if (!r.ok) return;
+          const d = await r.json();
+          document.getElementById("notificaciones").innerHTML = d.panel;
+          document.getElementById("avisos-invitacion").innerHTML = d.avisos;
+          const n = document.getElementById("contador-notificaciones");
+          n.textContent = d.total || "";
+          n.closest("button").setAttribute("aria-label", `Notificaciones (${d.total})`);
+        }
+        let reconectando = false;
+        function conectar() {
+          const ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws/notificaciones/`);
+          ws.onopen = () => { if (reconectando) actualizar(); };  // lo que llegó mientras estaba desconectado
+          ws.onmessage = actualizar;
+          ws.onclose = () => { reconectando = true; setTimeout(conectar, 5000); };
+        }
+        conectar();
+      })();
+    </script>
   {% endif %}
 
   <nav id="sidebar" popover class="m-0 h-full max-h-none w-80 border-0 border-r border-linea bg-tinta-2 p-6 text-hueso">
@@ -73,8 +64,11 @@
       <button popovertarget="sidebar" popovertargetaction="hide" aria-label="Cerrar menú" class="btn-chico">Cerrar</button>
     </div>
     <ol class="indice">
-      <li><a class="enlace-menu" href="{% url 'inicio' %}">Inicio</a></li>
-      {% if user.is_authenticated %}
+      {% if es_invitado %}
+        {# Los invitados solo pueden usar su partida (app/invitados.py). #}
+        <li><a class="enlace-menu" href="{% url 'partidas' %}">Mi partida</a></li>
+      {% elif user.is_authenticated %}
+        <li><a class="enlace-menu" href="{% url 'inicio' %}">Inicio</a></li>
         <li><a class="enlace-menu" href="{% url 'partidas' %}">Jugar con amigos</a></li>
         <li><a class="enlace-menu" href="{% url 'probar' %}">Probar mazos</a></li>
         <li><a class="enlace-menu" href="{% url 'mazos' %}">Mis mazos</a></li>
@@ -82,13 +76,14 @@
         {% if user.is_superuser %}<li><a class="enlace-menu" href="{% url 'panel' %}">Panel de administración</a></li>{% endif %}
         {% if user.is_staff %}<li><a class="enlace-menu" href="{% url 'admin:index' %}">Admin de Django</a></li>{% endif %}
       {% else %}
+        <li><a class="enlace-menu" href="{% url 'inicio' %}">Inicio</a></li>
         <li><a class="enlace-menu" href="{% url 'login' %}">Iniciar sesión</a></li>
         <li><a class="enlace-menu" href="{% url 'registro' %}">Registrarse</a></li>
       {% endif %}
     </ol>
     {% if user.is_authenticated %}
       <div class="mt-10">
-        <p class="etiqueta mb-3">Sesión de <span class="text-hueso">{{ user.username }}</span></p>
+        <p class="etiqueta mb-3">Sesión de <span class="text-hueso">{{ user|nombre }}</span></p>
         <form method="post" action="{% url 'logout' %}">
           {% csrf_token %}
           <button type="submit" class="btn-peligro w-full">Cerrar sesión</button>
@@ -99,10 +94,7 @@
   </nav>
 
   <main class="{% block main_class %}mx-auto max-w-5xl px-4 py-10 sm:px-6{% endblock %}">
-    {% for inv in invitaciones %}
-      <p class="mensaje invitacion" role="status">{{ inv.partida.anfitrion.username }} te invitó a una partida.
-        <a href="{% url 'sala' inv.partida.pk %}" class="ml-1 font-mono text-xs uppercase">Ver invitación →</a></p>
-    {% endfor %}
+    <div id="avisos-invitacion">{% include "app/_avisos_invitacion.html" %}</div>
     {% for m in messages %}<p class="mensaje {{ m.tags }}" role="status">{{ m }}</p>{% endfor %}
     {% if request.solo_pc %}{% include "app/sin_movil.html" %}{% endif %}
     <div {% if request.solo_pc %}class="solo-pc"{% endif %}>{% block content %}{% endblock %}</div>

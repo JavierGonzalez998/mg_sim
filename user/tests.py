@@ -1,7 +1,7 @@
 from django.contrib.auth.models import User
 from django.test import TestCase
 
-from .models import Amistad
+from .models import Amistad, Preferencias
 
 
 class LoginTests(TestCase):
@@ -75,3 +75,44 @@ class LoginTests(TestCase):
         amistad = Amistad.objects.create(de=a, a=b)
         self.client.force_login(c)
         self.assertEqual(self.client.post(f"/user/amigos/{amistad.pk}/eliminar/").status_code, 404)
+
+
+class FondoTests(TestCase):
+    """Fondo de la zona del jugador en la mesa: un arte de carta de Scryfall elegido en el perfil."""
+
+    ARTE = "https://cards.scryfall.io/art_crop/front/4/9/4955a28b-4e5f-4cfd-9a1b-3c2b0e5d7a10.jpg?1562910012"
+
+    def setUp(self):
+        self.ana = User.objects.create_user("ana")
+        self.client.force_login(self.ana)
+
+    def test_elegir_y_quitar(self):
+        self.client.post("/user/fondo/", {"fondo": self.ARTE, "nombre": "Krenko, Mob Boss · Dominaria · artista"})
+        self.assertEqual(Preferencias.objects.get(usuario=self.ana).fondo, self.ARTE)
+        perfil = self.client.get("/user/")
+        self.assertContains(perfil, self.ARTE)
+        self.assertContains(perfil, "Krenko, Mob Boss")
+        self.client.post("/user/fondo/", {"fondo": ""})
+        self.assertEqual(Preferencias.objects.get(usuario=self.ana).fondo, "")
+
+    def test_solo_artes_de_scryfall(self):
+        for url in ("https://ejemplo.com/imagen.jpg", "javascript:alert(1)",
+                    "https://cards.scryfall.io/normal/front/4/9/4955a28b-4e5f-4cfd-9a1b-3c2b0e5d7a10.jpg",
+                    self.ARTE + "');background:red"):
+            self.assertContains(self.client.post("/user/fondo/", {"fondo": url}, follow=True), "Elige uno de los artes")
+        self.assertFalse(Preferencias.objects.exclude(fondo="").exists())
+
+    def test_se_ve_en_la_mesa(self):
+        from app import juego
+        from app.models import Jugador, Partida
+        Preferencias.objects.create(usuario=self.ana, fondo=self.ARTE)
+        bob = User.objects.create_user("bob")
+        carta = {"nombre": "C", "imagen": None, "reverso": None, "tierra": False}
+        mazo = {"principal": [carta] * 40, "comandantes": []}
+        partida = Partida.objects.create(anfitrion=self.ana, estado="jugando",
+                                         juego=juego.crear([(self.ana.pk, "ana", mazo), (bob.pk, "bob", mazo)], ""))
+        for u in (self.ana, bob):
+            Jugador.objects.create(partida=partida, usuario=u, aceptada=True)
+        self.client.force_login(bob)  # bob también ve el fondo de ana
+        r = self.client.get(f"/game/{partida.pk}/")
+        self.assertContains(r, f'<script id="fondos" type="application/json">{{"{self.ana.pk}": "{self.ARTE}"}}</script>', html=False)

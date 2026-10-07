@@ -6,10 +6,18 @@
       <p class="etiqueta mb-2">Multijugador · de 2 a 5 jugadores</p>
       <h1 class="mb-0 text-5xl">Jugar con <span class="cursiva">amigos</span></h1>
     </div>
-    <form method="post" action="{% url 'crear_partida' %}">
-      {% csrf_token %}
-      <button type="submit" class="btn-primario px-6 py-3">+ Crear partida</button>
-    </form>
+    {% if en_curso %}
+      <div class="max-w-xs text-right">
+        <button type="button" class="btn-primario px-6 py-3" disabled>+ Crear partida</button>
+        <p class="mt-2 text-sm text-hueso-2">Ya estás en una <a href="{% url 'sala' en_curso.pk %}">partida</a>.
+          Termínala, ríndete o sal de la sala para crear otra.</p>
+      </div>
+    {% else %}
+      <form method="post" action="{% url 'crear_partida' %}">
+        {% csrf_token %}
+        <button type="submit" class="btn-primario px-6 py-3">+ Crear partida</button>
+      </form>
+    {% endif %}
   </div>
 
   {% if invitaciones %}
