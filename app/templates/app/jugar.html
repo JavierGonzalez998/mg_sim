@@ -1,0 +1,164 @@
+{% extends "base.html" %}
+{% block title %}Probando: {{ nombre }}{% endblock %}
+{% block main_class %}{% endblock %}
+{% block head %}
+<style>
+  .tablero { display: grid; gap: 6px; padding: 6px; box-sizing: border-box; height: calc(100vh - 3.5rem);
+             grid-template-columns: 150px 1fr 150px; grid-template-rows: auto 1fr 1fr 180px;
+             grid-template-areas: "barra barra barra" "mando campo biblioteca" "exilio tierras cementerio" "mano mano mano"; }
+  .barra { grid-area: barra; display: flex; flex-wrap: wrap; gap: .5rem .75rem; align-items: center; padding: 2px 4px; }
+  .barra strong { font: italic 600 1.15rem/1 var(--font-display); margin-right: .5rem; }
+  .barra .dato { min-width: 2.5ch; display: inline-block; text-align: center; }
+  .cartas { display: flex; flex-wrap: wrap; gap: 4px; align-items: flex-start; }
+  .carta { width: 80px; border-radius: 4px; cursor: grab; transition: transform .15s; }
+  .carta:hover { transform: translateY(-3px); }
+  .girada, .girada:hover { transform: rotate(90deg); margin: 0 16px; }
+  [data-zona="mano"] .carta { width: 110px; }
+  [data-zona="cementerio"] .carta, [data-zona="exilio"] .carta { width: 55px; }
+  [data-zona="biblioteca"] { cursor: pointer; }
+  .tablero .dorso { width: 80px; aspect-ratio: 63 / 88; display: grid; place-items: center;
+                    font: 600 1.4rem/1 var(--font-display); text-shadow: 0 1px 3px #000; }
+  #vista { right: 12px; bottom: 200px; width: 250px; }
+</style>
+{% endblock %}
+{% block content %}
+<div class="tablero fieltro">
+  <div class="barra">
+    <strong>{{ nombre }}</strong>
+    <button id="nueva">Nueva partida</button>
+    <button id="mulligan">Mulligan</button>
+    <button id="turno">Siguiente turno</button>
+    <span class="etiqueta">Turno <span class="dato" id="num-turno"></span></span>
+    <button id="barajar">Barajar biblioteca</button>
+    <span class="etiqueta">Vida
+      <button data-vida="-1" aria-label="Restar vida">−</button>
+      <span class="dato" id="vida"></span>
+      <button data-vida="1" aria-label="Sumar vida">+</button>
+    </span>
+    {% if mazo %}<a href="{% url 'mazo' mazo.pk %}">Ver lista</a>{% endif %}
+    <a href="{% url 'probar' %}">Cambiar mazo</a>
+  </div>
+  <section class="zona" data-zona="mando" style="grid-area: mando"><h2>Zona de mando</h2><div class="cartas"></div></section>
+  <section class="zona" data-zona="campo" style="grid-area: campo"><h2>Campo de batalla</h2><div class="cartas"></div></section>
+  <section class="zona" data-zona="tierras" style="grid-area: tierras"><h2>Tierras</h2><div class="cartas"></div></section>
+  <section class="zona" data-zona="biblioteca" style="grid-area: biblioteca" title="Clic para robar">
+    <h2>Biblioteca</h2><div class="dorso" id="biblioteca"></div>
+    <p class="pista">Clic: robar. Soltar: arriba. Shift+soltar: abajo.</p>
+  </section>
+  <section class="zona" data-zona="cementerio" style="grid-area: cementerio"><h2>Cementerio</h2><div class="cartas"></div></section>
+  <section class="zona" data-zona="exilio" style="grid-area: exilio"><h2>Exilio</h2><div class="cartas"></div></section>
+  <section class="zona" data-zona="mano" style="grid-area: mano"><h2>Mano</h2><div class="cartas"></div></section>
+</div>
+<img id="vista" hidden alt="">
+{{ datos|json_script:"datos-mazo" }}
+<script>
+const datos = JSON.parse(document.getElementById("datos-mazo").textContent);
+const $ = s => document.querySelector(s);
+let cartas, zonas, vida, turno, mulligans;
+
+function barajar(a) {
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+}
+function robar(n) { zonas.mano.push(...zonas.biblioteca.splice(0, n)); }
+
+function nuevaPartida() {
+  cartas = [];
+  zonas = { biblioteca: [], mano: [], campo: [], tierras: [], cementerio: [], exilio: [], mando: [] };
+  for (const [lista, zona] of [[datos.principal, "biblioteca"], [datos.comandantes, "mando"]])
+    for (const c of lista) { zonas[zona].push(cartas.length); cartas.push({ ...c, girada: false }); }
+  barajar(zonas.biblioteca);
+  robar(7);
+  vida = datos.comandantes.length ? 40 : 20;
+  turno = 1;
+  mulligans = 0;
+  render();
+}
+
+function mover(id, destino, abajo) {
+  for (const z of Object.values(zonas)) { const i = z.indexOf(id); if (i >= 0) z.splice(i, 1); }
+  if (destino !== "campo" && destino !== "tierras") cartas[id].girada = false;
+  if (destino === "biblioteca" && !abajo) zonas.biblioteca.unshift(id);
+  else zonas[destino].push(id);
+  render();
+}
+
+function render() {
+  for (const [nombre, ids] of Object.entries(zonas)) {
+    const cont = $(`[data-zona="${nombre}"] .cartas`);
+    if (!cont) continue;
+    cont.replaceChildren(...ids.map(id => {
+      const img = document.createElement("img");
+      img.className = "carta" + (cartas[id].girada ? " girada" : "");
+      img.src = cartas[id].imagen;
+      img.alt = img.title = cartas[id].nombre;
+      img.draggable = true;
+      img.dataset.id = id;
+      return img;
+    }));
+  }
+  $("#biblioteca").textContent = zonas.biblioteca.length;
+  $("#vida").textContent = vida;
+  $("#num-turno").textContent = turno;
+  $("#mulligan").textContent = mulligans ? `Mulligan (${mulligans})` : "Mulligan";
+}
+
+const tablero = $(".tablero");
+tablero.addEventListener("dragstart", e => {
+  const c = e.target.closest(".carta");
+  if (c) e.dataTransfer.setData("text/plain", c.dataset.id);
+  $("#vista").hidden = true;
+});
+tablero.addEventListener("dragover", e => {
+  const z = e.target.closest(".zona");
+  if (!z) return;
+  e.preventDefault();
+  z.classList.add("encima");
+});
+tablero.addEventListener("dragleave", e => e.target.closest(".zona")?.classList.remove("encima"));
+tablero.addEventListener("drop", e => {
+  const z = e.target.closest(".zona");
+  if (!z) return;
+  e.preventDefault();
+  z.classList.remove("encima");
+  mover(Number(e.dataTransfer.getData("text/plain")), z.dataset.zona, e.shiftKey);
+});
+tablero.addEventListener("click", e => {
+  const c = e.target.closest(".carta");
+  const zona = e.target.closest(".zona")?.dataset.zona;
+  if (zona === "biblioteca") { robar(1); render(); }
+  else if (c && (zona === "campo" || zona === "tierras")) { cartas[c.dataset.id].girada = !cartas[c.dataset.id].girada; render(); }
+});
+tablero.addEventListener("dblclick", e => {
+  const c = e.target.closest('[data-zona="mano"] .carta');
+  if (c) mover(Number(c.dataset.id), cartas[c.dataset.id].tierra ? "tierras" : "campo");
+});
+tablero.addEventListener("mouseover", e => {
+  const c = e.target.closest(".carta");
+  $("#vista").hidden = !c;
+  if (c) $("#vista").src = c.src;
+});
+
+$("#nueva").onclick = nuevaPartida;
+$("#mulligan").onclick = () => {
+  // ponytail: mulligan de Londres manual: tras robar 7, arrastra con Shift a la biblioteca las que van abajo
+  zonas.biblioteca.push(...zonas.mano.splice(0));
+  barajar(zonas.biblioteca);
+  robar(7);
+  mulligans++;
+  render();
+};
+$("#turno").onclick = () => {
+  for (const id of [...zonas.campo, ...zonas.tierras]) cartas[id].girada = false;
+  robar(1);
+  turno++;
+  render();
+};
+$("#barajar").onclick = () => { barajar(zonas.biblioteca); render(); };
+document.querySelectorAll("[data-vida]").forEach(b => b.onclick = () => { vida += Number(b.dataset.vida); render(); });
+
+nuevaPartida();
+</script>
+{% endblock %}

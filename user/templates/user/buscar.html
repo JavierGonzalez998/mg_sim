@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Buscar usuarios{% endblock %}
+{% block content %}
+  <div class="mx-auto max-w-2xl">
+    <p class="etiqueta mb-2">Comunidad</p>
+    <h1>Buscar <span class="cursiva">jugadores</span></h1>
+    <form method="get" class="mb-8 flex items-end gap-2">
+      <input name="q" type="search" value="{{ q }}" aria-label="Nombre de usuario" required autocomplete="off"
+             placeholder="Nombre de usuario">
+      <button type="submit" class="btn-primario">Buscar</button>
+    </form>
+    {% if q %}
+      <ul class="border-t border-linea">
+        {% for u in usuarios %}
+          <li>
+            <a href="{% url 'ver_perfil' u.username %}"
+               class="flex items-center gap-4 border-b border-dashed border-linea px-2 py-3 font-display text-xl text-hueso no-underline hover:bg-tinta-2 hover:text-bermellon-2">
+              <span class="avatar size-10 text-lg">{{ u.username|first|upper }}</span>
+              {{ u.username }}
+              <span class="etiqueta ml-auto">ver perfil →</span>
+            </a>
+          </li>
+        {% empty %}
+          <li class="py-4 text-hueso-2">No se encontraron usuarios con «{{ q }}».</li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+  </div>
+{% endblock %}

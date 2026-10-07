@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Iniciar sesión{% endblock %}
+{% block content %}
+  <div class="grid items-center gap-12 md:grid-cols-2">
+    <div>
+      <p class="etiqueta mb-4">Acceso</p>
+      <h1 class="text-6xl">Vuelve a<br>la <span class="cursiva">mesa.</span></h1>
+      <p class="max-w-sm text-hueso-2">Tus mazos, tus amigos y tus partidas te esperan donde los dejaste.</p>
+    </div>
+    <div class="tarjeta p-8">
+      <h2 class="mt-0 mb-6">Iniciar sesión</h2>
+      <form method="post" class="formulario">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <input type="hidden" name="next" value="{{ next }}">
+        <button type="submit" class="btn-primario mt-2 w-full py-3">Entrar</button>
+      </form>
+      <p class="mt-6 text-sm text-hueso-2">¿No tienes cuenta? <a href="{% url 'registro' %}">Regístrate</a></p>
+    </div>
+  </div>
+{% endblock %}

@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% block title %}Panel de administración{% endblock %}
+{% block main_class %}mx-auto max-w-7xl px-4 py-10 sm:px-6{% endblock %}
+{% block content %}
+  <div class="mb-10 flex flex-wrap items-end justify-between gap-6 border-b border-linea pb-8">
+    <div>
+      <p class="etiqueta mb-2">Solo superusuarios</p>
+      <h1 class="mb-0 text-5xl">Panel de <span class="cursiva">administración</span></h1>
+    </div>
+    <a href="{% url 'admin:index' %}" class="boton btn-fantasma">Admin de Django ↗</a>
+  </div>
+
+  <dl class="grid border-t border-l border-linea sm:grid-cols-2 lg:grid-cols-5">
+    {% for titulo, valor, detalle in estadisticas %}
+      <div class="border-r border-b border-linea p-5">
+        <dt class="mb-3">{{ titulo }}</dt>
+        <dd class="dato mb-2">{{ valor }}</dd>
+        <dd class="mb-0 text-xs text-hueso-3">{{ detalle }}</dd>
+      </div>
+    {% endfor %}
+  </dl>
+
+  {% if formatos %}
+    <p class="etiqueta mt-10 mb-3">Mazos por formato</p>
+    <div class="flex flex-wrap gap-2">
+      {% for f in formatos %}
+        <span class="sello sello-apagado text-hueso-2">{{ f.formato|default:"sin formato" }} · <span class="text-bermellon-2">{{ f.n }}</span></span>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  <section class="mt-12">
+    <div class="mb-4 flex flex-wrap items-end justify-between gap-4">
+      <h2 class="m-0">Usuarios</h2>
+      <form method="get" class="flex items-end gap-2">
+        <input name="q" type="search" value="{{ q }}" placeholder="Usuario o correo" aria-label="Buscar usuarios">
+        <button type="submit">Buscar</button>
+      </form>
+    </div>
+    <div class="overflow-x-auto">
+      <table>
+        <thead><tr><th>Usuario</th><th>Correo</th><th>Mazos</th><th>Registro</th><th>Último acceso</th><th>Estado</th><th></th></tr></thead>
+        <tbody>
+          {% for u in usuarios %}
+            <tr class="transition hover:bg-tinta-2">
+              <td>
+                <a href="{% url 'admin:auth_user_change' u.pk %}" class="font-display text-lg text-hueso no-underline hover:text-bermellon-2">{{ u.username }}</a>
+                {% if u.is_superuser %}<span class="sello sello-oro ml-1">superusuario</span>
+                {% elif u.is_staff %}<span class="sello sello-azur ml-1">staff</span>{% endif %}
+              </td>
+              <td class="text-hueso-2">{{ u.email|default:"—" }}</td>
+              <td class="font-mono">{{ u.n_mazos }}</td>
+              <td class="font-mono text-xs text-hueso-3">{{ u.date_joined|date:"d/m/Y" }}</td>
+              <td class="font-mono text-xs text-hueso-3">{{ u.last_login|date:"d/m/Y H:i"|default:"nunca" }}</td>
+              <td><span class="sello {% if u.is_active %}sello-ok{% else %}sello-sangre{% endif %}">{{ u.is_active|yesno:"Activo,Desactivado" }}</span></td>
+              <td class="text-right">
+                {% if u != user %}
+                  <form method="post" action="{% url 'cambiar_activo' u.pk %}">
+                    {% csrf_token %}
+                    <button type="submit" class="btn-chico {% if u.is_active %}btn-peligro{% endif %}">{{ u.is_active|yesno:"Desactivar,Activar" }}</button>
+                  </form>
+                {% endif %}
+              </td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="7" class="text-hueso-2">No hay usuarios{% if q %} con «{{ q }}»{% endif %}.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="mt-12">
+    <h2 class="mt-0">Partidas activas</h2>
+    <div class="overflow-x-auto">
+      <table>
+        <thead><tr><th>Nº</th><th>Anfitrión</th><th>Estado</th><th>Formato</th><th>Jugadores</th><th>Creada</th><th></th></tr></thead>
+        <tbody>
+          {% for p in partidas %}
+            <tr class="transition hover:bg-tinta-2">
+              <td class="font-mono"><a href="{% url 'admin:app_partida_change' p.pk %}">{{ p.pk }}</a></td>
+              <td>{{ p.anfitrion.username }}</td>
+              <td><span class="sello {% if p.estado == 'jugando' %}sello-ok{% else %}sello-oro{% endif %}">{{ p.get_estado_display }}</span></td>
+              <td class="text-hueso-2">{{ p.formato|default:"—" }}</td>
+              <td class="font-mono">{{ p.n_jugadores }}</td>
+              <td class="font-mono text-xs text-hueso-3">{{ p.creada|date:"d/m/Y H:i" }}</td>
+              <td class="text-right">
+                <form method="post" action="{% url 'eliminar_partida' p.pk %}"
+                      onsubmit="return confirm('¿Eliminar la partida {{ p.pk }}? Los jugadores serán expulsados.')">
+                  {% csrf_token %}<button type="submit" class="btn-peligro btn-chico">Eliminar</button>
+                </form>
+              </td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="7" class="text-hueso-2">No hay partidas activas.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+{% endblock %}

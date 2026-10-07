@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block title %}Sala de {{ partida.anfitrion.username }}{% endblock %}
+{% block content %}
+  <div class="mb-10 border-b border-linea pb-8">
+    <p class="etiqueta mb-2">
+      Sala de espera · formato: <span class="text-hueso">{{ partida.formato|default:"lo define el mazo del anfitrión" }}</span>
+    </p>
+    <h1 class="mb-2 text-5xl">Mesa de <span class="cursiva">{{ partida.anfitrion.username }}</span></h1>
+    <p class="text-hueso-2">De 2 a 5 jugadores. Todos deben usar mazos del mismo formato.</p>
+  </div>
+
+  {% if not yo.aceptada %}
+    <div class="tarjeta mb-8 flex flex-wrap items-center gap-3 border-l-4 border-l-ciruela">
+      <p class="mr-auto font-display text-xl">{{ partida.anfitrion.username }} te invitó a esta partida.</p>
+      <form method="post" action="{% url 'unirse' partida.pk %}">
+        {% csrf_token %}<button type="submit" class="btn-primario">Unirse</button>
+      </form>
+      <form method="post" action="{% url 'salir' partida.pk %}">
+        {% csrf_token %}<button type="submit">Rechazar</button>
+      </form>
+    </div>
+  {% endif %}
+
+  <div class="grid gap-8 lg:grid-cols-5">
+    <section class="lg:col-span-3">
+      <p class="etiqueta mb-3">Jugadores · {{ jugadores|length }}/5</p>
+      <ol>
+        {% for j in jugadores %}
+          <li class="flex items-center gap-4 border-b border-dashed border-linea py-4 first:border-t first:border-solid">
+            <span class="font-mono text-xs text-hueso-3">{{ forloop.counter|stringformat:"02d" }}</span>
+            <span class="avatar size-10 text-lg">{{ j.usuario.username|first|upper }}</span>
+            <div class="mr-auto">
+              <p class="font-display text-xl">{{ j.usuario.username }}
+                {% if j.usuario_id == partida.anfitrion_id %}<span class="sello sello-oro ml-1 align-middle">anfitrión</span>{% endif %}</p>
+              <p class="text-sm text-hueso-2">
+                {% if j.mazo_nombre %}{{ j.mazo_nombre }} · <span class="font-mono text-xs">{{ j.formato|default:"sin formato" }}</span>
+                {% else %}Sin mazo elegido{% endif %}
+              </p>
+            </div>
+            <span class="sello {% if j.aceptada %}sello-ok{% else %}sello-apagado{% endif %}">{{ j.aceptada|yesno:"Unido,Invitado" }}</span>
+          </li>
+        {% endfor %}
+      </ol>
+    </section>
+
+    <div class="space-y-6 lg:col-span-2">
+      {% if yo.aceptada %}
+        <section class="tarjeta">
+          <h2 class="mt-0">Tu mazo</h2>
+          <form method="post" action="{% url 'elegir_mazo' partida.pk %}" class="formulario">
+            {% csrf_token %}
+            {{ form_mazo.as_p }}
+            <button type="submit" class="w-full">Elegir mazo</button>
+          </form>
+        </section>
+      {% endif %}
+
+      {% if es_anfitrion %}
+        <section class="tarjeta">
+          <h2 class="mt-0">Invitar amigos</h2>
+          {% if not hay_lugar %}
+            <p class="text-hueso-2">La sala está llena (máximo 5 jugadores).</p>
+          {% elif invitables %}
+            <form method="post" action="{% url 'invitar' partida.pk %}" class="flex items-end gap-2">
+              {% csrf_token %}
+              <div class="flex-1">
+                <label for="id_invitado">Amigo</label>
+                <select id="id_invitado" name="username">
+                  {% for a in invitables %}<option>{{ a.username }}</option>{% endfor %}
+                </select>
+              </div>
+              <button type="submit">Invitar</button>
+            </form>
+          {% else %}
+            <p class="text-hueso-2">No tienes más amigos para invitar. Agrégalos desde <a href="{% url 'perfil' %}#amigos">tu perfil</a>.</p>
+          {% endif %}
+        </section>
+
+        <section>
+          {% for p in problemas %}<p class="mensaje error">{{ p }}</p>{% endfor %}
+          <form method="post" action="{% url 'iniciar' partida.pk %}">
+            {% csrf_token %}
+            <button type="submit" class="btn-primario w-full py-4 text-sm" {% if problemas %}disabled{% endif %}>Iniciar partida</button>
+          </form>
+        </section>
+      {% endif %}
+    </div>
+  </div>
+
+  <form method="post" action="{% url 'salir' partida.pk %}" class="mt-12">
+    {% csrf_token %}
+    <button type="submit" class="btn-peligro">{% if es_anfitrion %}Cancelar partida{% else %}Salir de la sala{% endif %}</button>
+  </form>
+
+  <script>
+    // Recarga la sala (por WebSocket) cuando alguien se une, elige mazo o el anfitrión inicia la partida.
+    const version = {{ partida.version }};
+    function recargar() {
+      const campo = document.activeElement;
+      // No recarga mientras escribes en un campo; lo hará al salir de él.
+      if (campo.matches("input, select")) campo.addEventListener("blur", () => location.reload(), { once: true });
+      else location.reload();
+    }
+    (function conectar() {
+      const ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws/game/{{ partida.pk }}/`);
+      ws.onmessage = e => {
+        const d = JSON.parse(e.data);
+        if (d.eliminada) location.assign("{% url 'partidas' %}");
+        else if (d.version !== version) recargar();
+      };
+      ws.onclose = () => setTimeout(conectar, 2000);
+    })();
+  </script>
+{% endblock %}

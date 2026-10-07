@@ -1,0 +1,67 @@
+{% load static %}<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}{% endblock %} · MG Simulator</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..800;1,9..144,300..800&family=IBM+Plex+Mono:wght@400;500&family=Instrument+Sans:wght@400..700&display=swap">
+  {# Tailwind compilado (npm run build:css). La fuente está en tailwind/entrada.css. #}
+  <link rel="stylesheet" href="{% static 'app/estilos.css' %}">
+  {% block head %}{% endblock %}
+</head>
+<body class="min-h-screen">
+  <header class="sticky top-0 z-10 flex h-14 items-center gap-4 border-b border-linea bg-tinta/85 px-4 backdrop-blur sm:px-6">
+    <div class="franja-mana absolute inset-x-0 top-0"></div>
+    <button popovertarget="sidebar" aria-label="Abrir menú" class="btn-chico">☰ Menú</button>
+    <a href="{% url 'inicio' %}" class="flex items-center gap-2.5 no-underline">
+      <span class="pips" aria-hidden="true"><i class="bg-mana-w"></i><i class="bg-mana-u"></i><i class="bg-mana-b"></i><i class="bg-mana-r"></i><i class="bg-mana-g"></i></span>
+      <span class="font-display text-xl font-semibold text-hueso italic">MG Simulator</span>
+    </a>
+    {% if user.is_authenticated %}
+      <a href="{% url 'perfil' %}" class="etiqueta ml-auto no-underline hover:text-hueso">{{ user.username }}</a>
+    {% endif %}
+  </header>
+
+  <nav id="sidebar" popover class="m-0 h-full max-h-none w-80 border-0 border-r border-linea bg-tinta-2 p-6 text-hueso">
+    <div class="mb-8 flex items-center justify-between">
+      <span class="etiqueta">Índice</span>
+      <button popovertarget="sidebar" popovertargetaction="hide" aria-label="Cerrar menú" class="btn-chico">Cerrar</button>
+    </div>
+    <ol class="indice">
+      <li><a class="enlace-menu" href="{% url 'inicio' %}">Inicio</a></li>
+      {% if user.is_authenticated %}
+        <li><a class="enlace-menu" href="{% url 'partidas' %}">Jugar con amigos</a></li>
+        <li><a class="enlace-menu" href="{% url 'probar' %}">Probar mazos</a></li>
+        <li><a class="enlace-menu" href="{% url 'mazos' %}">Mis mazos</a></li>
+        <li><a class="enlace-menu" href="{% url 'perfil' %}">Mi perfil</a></li>
+        {% if user.is_superuser %}<li><a class="enlace-menu" href="{% url 'panel' %}">Panel de administración</a></li>{% endif %}
+        {% if user.is_staff %}<li><a class="enlace-menu" href="{% url 'admin:index' %}">Admin de Django</a></li>{% endif %}
+      {% else %}
+        <li><a class="enlace-menu" href="{% url 'login' %}">Iniciar sesión</a></li>
+        <li><a class="enlace-menu" href="{% url 'registro' %}">Registrarse</a></li>
+      {% endif %}
+    </ol>
+    {% if user.is_authenticated %}
+      <div class="mt-10">
+        <p class="etiqueta mb-3">Sesión de <span class="text-hueso">{{ user.username }}</span></p>
+        <form method="post" action="{% url 'logout' %}">
+          {% csrf_token %}
+          <button type="submit" class="btn-peligro w-full">Cerrar sesión</button>
+        </form>
+      </div>
+    {% endif %}
+    <div class="franja-mana absolute inset-x-0 bottom-0"></div>
+  </nav>
+
+  <main class="{% block main_class %}mx-auto max-w-5xl px-4 py-10 sm:px-6{% endblock %}">
+    {% for inv in invitaciones %}
+      <p class="mensaje invitacion" role="status">{{ inv.partida.anfitrion.username }} te invitó a una partida.
+        <a href="{% url 'sala' inv.partida.pk %}" class="ml-1 font-mono text-xs uppercase">Ver invitación →</a></p>
+    {% endfor %}
+    {% for m in messages %}<p class="mensaje {{ m.tags }}" role="status">{{ m }}</p>{% endfor %}
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

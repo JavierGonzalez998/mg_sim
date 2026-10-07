@@ -1,0 +1,175 @@
+/*
+  Entrada de Tailwind. Se compila a app/static/app/estilos.css (el archivo que usa base.html):
+    npm run build:css   → versión minificada para producción
+    npm run watch:css   → recompila al guardar mientras desarrollas
+
+  Dirección visual "Grimorio": tinta y hueso con grano de papel, títulos en serif (Fraunces),
+  etiquetas en mono como un manual de reglas, bermellón para la acción y la franja de los
+  cinco colores de maná como firma.
+*/
+@import "tailwindcss" source(none);
+
+/* Solo se escanean nuestras plantillas y scripts (no venv ni node_modules). */
+@source "../app/templates";
+@source "../user/templates";
+@source "../managements/templates";
+@source "../app/static/app/*.js";
+
+@theme static {
+  --font-display: "Fraunces", Georgia, serif;
+  --font-sans: "Instrument Sans", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+
+  --color-tinta: #14100f;
+  --color-tinta-2: #1c1614;
+  --color-tinta-3: #29211e;
+  --color-linea: #3b302b;
+  --color-hueso: #eee5d1;
+  --color-hueso-2: #b8ab94;
+  --color-hueso-3: #857866;
+  --color-bermellon: #e0552f;
+  --color-bermellon-2: #f2704b;
+  --color-musgo: #74a05e;
+  --color-azur: #5592cc;
+  --color-ciruela: #a271a8;
+  --color-sangre: #c43a2f;
+  --color-oro: #d9a441;
+
+  --color-mana-w: #f3ead0;
+  --color-mana-u: #3a86c8;
+  --color-mana-b: #6d5c70;
+  --color-mana-r: #d9542b;
+  --color-mana-g: #3f8f57;
+}
+
+@layer base {
+  html { scroll-behavior: smooth; }
+  body {
+    @apply bg-tinta text-hueso antialiased;
+    background-image:
+      radial-gradient(1100px 600px at 90% -10%, rgb(224 85 47 / .10), transparent 60%),
+      radial-gradient(900px 500px at -10% 110%, rgb(58 134 200 / .07), transparent 60%),
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .05 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    background-attachment: fixed;
+  }
+  ::selection { @apply bg-bermellon text-tinta; }
+
+  h1 { @apply mb-4 font-display text-4xl leading-[1.05] font-semibold tracking-tight sm:text-5xl; }
+  h2 { @apply mt-10 mb-4 font-display text-2xl font-semibold tracking-tight; }
+  h3 { @apply mt-6 mb-2 font-display text-xl font-medium; }
+  a { @apply text-bermellon-2 underline decoration-bermellon/40 underline-offset-4 transition hover:decoration-bermellon-2; }
+
+  label { @apply mb-1.5 block font-mono text-[11px] tracking-[.18em] text-hueso-2 uppercase; }
+  input:not([type=checkbox]):not([type=radio]):not([type=hidden]), select, textarea {
+    @apply w-full rounded-none border-0 border-b-2 border-linea bg-tinta-2/70 px-3 py-2.5 text-hueso
+           placeholder:text-hueso-3 focus:border-bermellon focus:bg-tinta-2 focus:outline-none;
+  }
+  select option { @apply bg-tinta-2; }
+
+
+  table { @apply w-full border-collapse text-left text-sm; }
+  th { @apply border-b border-hueso/30 px-3 py-2 font-mono text-[11px] font-medium tracking-[.16em] text-hueso-3 uppercase; }
+  td { @apply border-b border-dashed border-linea px-3 py-2.5 align-middle; }
+  dt { @apply font-mono text-[11px] tracking-[.16em] text-hueso-3 uppercase; }
+  dd { @apply mb-4 ml-0; }
+}
+
+@layer components {
+  /* Botón "sello": recto, mono, con sombra desplazada que se hunde al pulsar. También para <a>. */
+  .boton, button {
+    @apply inline-flex cursor-pointer items-center justify-center gap-2 border border-hueso/25 bg-tinta-3 px-4 py-2
+           font-mono text-xs font-medium tracking-[.14em] text-hueso uppercase no-underline
+           shadow-[3px_3px_0_0_rgb(0_0_0/.6)] transition
+           hover:border-hueso/50 hover:bg-linea hover:text-hueso
+           active:translate-x-[2px] active:translate-y-[2px] active:shadow-none
+           disabled:cursor-not-allowed disabled:opacity-40;
+  }
+  .btn-primario { @apply border-bermellon bg-bermellon text-tinta hover:border-bermellon-2 hover:bg-bermellon-2 hover:text-tinta; }
+  .btn-peligro { @apply border-sangre/70 bg-transparent text-[#f08a80] hover:border-sangre hover:bg-sangre hover:text-hueso; }
+  .btn-fantasma { @apply bg-transparent shadow-none; }
+  .btn-chico { @apply px-2.5 py-1 text-[10px] shadow-[2px_2px_0_0_rgb(0_0_0/.6)]; }
+
+  /* Tarjeta con doble marco, como el borde de una carta. */
+  .tarjeta {
+    @apply relative border border-linea bg-tinta-2/85 p-6;
+    box-shadow: inset 0 0 0 5px var(--color-tinta-2), inset 0 0 0 6px rgb(238 229 209 / .07), 6px 6px 0 0 rgb(0 0 0 / .35);
+  }
+
+  .etiqueta { @apply font-mono text-[11px] tracking-[.2em] text-hueso-3 uppercase; }
+  .cursiva { @apply font-display font-normal text-bermellon-2 italic; }
+  .dato { @apply font-display text-5xl leading-none font-semibold text-hueso; }
+
+  .sello { @apply inline-block border px-2 py-0.5 font-mono text-[10px] tracking-[.14em] whitespace-nowrap uppercase; }
+  .sello-ok { @apply border-musgo/60 text-musgo; }
+  .sello-oro { @apply border-oro/60 text-oro; }
+  .sello-azur { @apply border-azur/60 text-azur; }
+  .sello-ciruela { @apply border-ciruela/60 text-ciruela; }
+  .sello-sangre { @apply border-sangre/70 text-[#f08a80]; }
+  .sello-apagado { @apply border-linea text-hueso-3; }
+
+  .avatar { @apply grid shrink-0 place-items-center border border-hueso/30 bg-tinta-3 font-display font-semibold text-hueso italic; }
+
+  .franja-mana {
+    height: 3px;
+    background: linear-gradient(90deg, var(--color-mana-w) 0 20%, var(--color-mana-u) 20% 40%,
+      var(--color-mana-b) 40% 60%, var(--color-mana-r) 60% 80%, var(--color-mana-g) 80%);
+  }
+  .pips { @apply flex gap-[3px]; }
+  .pips i { @apply block size-2 rounded-full; }
+
+  .formulario p { @apply mb-5; }
+  .formulario .helptext, .formulario ul:not(.errorlist) { @apply mt-1.5 block text-xs text-hueso-3; }
+  .formulario ul:not(.errorlist) { @apply list-[square] pl-5; }
+  .errorlist { @apply mt-1.5 list-none p-0 font-mono text-xs text-[#f08a80]; }
+
+  .mensaje { @apply mb-3 border-l-4 border-musgo bg-tinta-2/90 px-4 py-2.5 text-sm text-hueso; }
+  .mensaje.error { @apply border-sangre; }
+  .mensaje.info { @apply border-azur; }
+  .mensaje.invitacion { @apply border-ciruela; }
+
+  /* Índice numerado del menú lateral. */
+  .indice { counter-reset: indice; }
+  .indice li { counter-increment: indice; }
+  .enlace-menu {
+    @apply flex items-baseline gap-3 border-b border-dashed border-linea py-3 font-display text-xl text-hueso no-underline hover:text-bermellon-2;
+  }
+  .enlace-menu::before { content: counter(indice, decimal-leading-zero); @apply font-mono text-[11px] text-hueso-3; }
+
+  /* Fila de lista con separador punteado. */
+  .fila { @apply flex items-center gap-2 border-b border-dashed border-linea py-2.5 last:border-0; }
+}
+
+#sidebar { inset: 0 auto 0 0; }
+#sidebar::backdrop { background: rgb(10 8 7 / .7); backdrop-filter: blur(2px); }
+
+/* --- Mesas de juego (jugar.html y partida.html): tapete de fieltro con el lenguaje del Grimorio --- */
+.fieltro {
+  color: var(--color-hueso);
+  background:
+    radial-gradient(ellipse at 50% 35%, rgb(255 255 255 / .05), transparent 60%),
+    radial-gradient(ellipse at center, #1d3a30 0%, #10221c 55%, #07100d 100%);
+}
+.fieltro .zona {
+  background: rgb(6 10 8 / .35); border: 1px dashed rgb(238 229 209 / .16); padding: 4px; overflow: auto; min-height: 0;
+  transition: background .15s, border-color .15s;
+}
+.fieltro .zona.encima { background: rgb(224 85 47 / .12); border-color: var(--color-bermellon); }
+.fieltro .zona > h2, .fieltro .zona > h4 {
+  margin: 0 0 4px; font: 500 10px/1.2 var(--font-mono); letter-spacing: .16em; text-transform: uppercase;
+  color: rgb(238 229 209 / .45);
+}
+.fieltro .dorso {
+  border-radius: 4px; border: 2px solid #0b0807; box-shadow: inset 0 0 0 2px rgb(238 229 209 / .14);
+  background:
+    radial-gradient(circle, var(--color-bermellon) 0 8%, transparent 9%),
+    radial-gradient(circle, transparent 0 22%, rgb(238 229 209 / .18) 23% 25%, transparent 26%),
+    repeating-linear-gradient(45deg, #2b1d16 0 5px, #1f140f 5px 10px);
+}
+.fieltro button { padding: 4px 9px; font-size: 10px; letter-spacing: .1em; box-shadow: 2px 2px 0 0 rgb(0 0 0 / .6); }
+.fieltro a { font: 500 10px/1 var(--font-mono); letter-spacing: .14em; text-transform: uppercase; }
+.fieltro .dato { font: 600 1.4rem/1 var(--font-display); }
+.fieltro .pista { font: 10px/1.4 var(--font-mono); color: rgb(238 229 209 / .5); margin: 4px 0 0; }
+#vista {
+  position: fixed; pointer-events: none; z-index: 30; border-radius: 4.75% / 3.5%;
+  box-shadow: 8px 8px 0 0 rgb(0 0 0 / .55); outline: 1px solid rgb(238 229 209 / .2);
+}

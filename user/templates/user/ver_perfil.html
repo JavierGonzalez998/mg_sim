@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}{{ otro.username }}{% endblock %}
+{% block content %}
+  <div class="tarjeta mx-auto max-w-xl p-10 text-center">
+    <div class="avatar mx-auto mb-6 size-24 text-5xl">{{ otro.username|first|upper }}</div>
+    <p class="etiqueta mb-2">Jugador · desde {{ otro.date_joined|date:"d/m/Y" }}</p>
+    <h1 class="mb-8 text-5xl">{{ otro.username }}</h1>
+
+    {% if not amistad %}
+      <form method="post" action="{% url 'enviar_solicitud' %}">
+        {% csrf_token %}
+        <input type="hidden" name="username" value="{{ otro.username }}">
+        <input type="hidden" name="next" value="{{ request.get_full_path }}">
+        <button type="submit" class="btn-primario px-6 py-3">Enviar solicitud de amistad</button>
+      </form>
+    {% elif amistad.aceptada %}
+      <div class="flex items-center justify-center gap-3">
+        <span class="sello sello-ok">Son amigos.</span>
+        <form method="post" action="{% url 'eliminar_amistad' amistad.pk %}"
+              onsubmit="return confirm('¿Eliminar a {{ otro.username|escapejs }} de tus amigos?')">
+          {% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
+          <button type="submit" class="btn-peligro btn-chico">Eliminar amigo</button>
+        </form>
+      </div>
+    {% elif amistad.de == user %}
+      <div class="flex items-center justify-center gap-3">
+        <span class="sello sello-apagado">Solicitud enviada.</span>
+        <form method="post" action="{% url 'eliminar_amistad' amistad.pk %}">
+          {% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
+          <button type="submit" class="btn-chico">Cancelar solicitud</button>
+        </form>
+      </div>
+    {% else %}
+      <p class="mb-4 text-hueso-2">{{ otro.username }} te envió una solicitud.</p>
+      <div class="flex justify-center gap-3">
+        <form method="post" action="{% url 'aceptar_solicitud' amistad.pk %}">
+          {% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
+          <button type="submit" class="btn-primario">Aceptar</button>
+        </form>
+        <form method="post" action="{% url 'eliminar_amistad' amistad.pk %}">
+          {% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
+          <button type="submit">Rechazar</button>
+        </form>
+      </div>
+    {% endif %}
+  </div>
+{% endblock %}

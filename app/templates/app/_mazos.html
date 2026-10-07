@@ -1,0 +1,51 @@
+<section id="mazos">
+  <div class="mb-6 flex flex-wrap items-end justify-between gap-4">
+    <div>
+      <p class="etiqueta mb-1">Biblioteca</p>
+      <h2 class="m-0 text-3xl">Mis <span class="cursiva">mazos</span></h2>
+    </div>
+  </div>
+  <form method="post" action="{% url 'mazos' %}" class="formulario tarjeta mb-8 flex flex-wrap items-end gap-3 p-5 sm:flex-nowrap">
+    {% csrf_token %}
+    <div class="w-full">
+      <label for="{{ form_importar.url.id_for_label }}">{{ form_importar.url.label }}</label>
+      {{ form_importar.url }}
+      {{ form_importar.url.errors }}
+    </div>
+    <button type="submit" class="btn-primario shrink-0">Importar</button>
+  </form>
+  {% if mazos %}
+    <div class="overflow-x-auto">
+      <table>
+        <thead><tr><th>Mazo</th><th>Formato</th><th>Cartas</th><th>Importado</th><th class="text-right">Acciones</th></tr></thead>
+        <tbody>
+          {% for m in mazos %}
+            <tr class="transition hover:bg-tinta-2">
+              <td><a href="{% url 'mazo' m.pk %}" class="font-display text-lg text-hueso no-underline hover:text-bermellon-2">{{ m.nombre }}</a></td>
+              <td><span class="sello sello-apagado">{{ m.formato|default:"—" }}</span></td>
+              <td class="font-mono">{{ m.total|default:0 }}</td>
+              <td class="font-mono text-xs text-hueso-3">{{ m.creado|date:"d/m/Y" }}</td>
+              <td>
+                <div class="flex justify-end gap-2">
+                  <a href="{% url 'probar' %}?mazo={{ m.pk }}" class="boton btn-primario btn-chico">Probar</a>
+                  <form method="post" action="{% url 'actualizar_mazo' m.pk %}">
+                    {% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
+                    <button type="submit" class="btn-chico">Actualizar</button>
+                  </form>
+                  <form method="post" action="{% url 'eliminar_mazo' m.pk %}"
+                        onsubmit="return confirm('¿Eliminar {{ m.nombre|escapejs }}?')">
+                    {% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
+                    <button type="submit" class="btn-peligro btn-chico">Eliminar</button>
+                  </form>
+                </div>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="border border-dashed border-linea p-6 text-center text-hueso-2">
+      Aún no tienes mazos. Pega el enlace de un mazo público de Moxfield.</p>
+  {% endif %}
+</section>

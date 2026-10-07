@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Jugar con amigos{% endblock %}
+{% block content %}
+  <div class="mb-10 flex flex-wrap items-end justify-between gap-6 border-b border-linea pb-8">
+    <div>
+      <p class="etiqueta mb-2">Multijugador · de 2 a 5 jugadores</p>
+      <h1 class="mb-0 text-5xl">Jugar con <span class="cursiva">amigos</span></h1>
+    </div>
+    <form method="post" action="{% url 'crear_partida' %}">
+      {% csrf_token %}
+      <button type="submit" class="btn-primario px-6 py-3">+ Crear partida</button>
+    </form>
+  </div>
+
+  {% if invitaciones %}
+    <p class="etiqueta mb-3">Invitaciones</p>
+    <ul class="mb-10 grid gap-4 sm:grid-cols-2">
+      {% for inv in invitaciones %}
+        <li class="tarjeta flex items-center gap-3 border-l-4 border-l-ciruela p-5">
+          <span class="mr-auto"><strong class="font-display text-lg">{{ inv.partida.anfitrion.username }}</strong>
+            <span class="text-hueso-2">te invitó.</span></span>
+          <form method="post" action="{% url 'unirse' inv.partida.pk %}">
+            {% csrf_token %}<button type="submit" class="btn-primario btn-chico">Unirse</button>
+          </form>
+          <form method="post" action="{% url 'salir' inv.partida.pk %}">
+            {% csrf_token %}<button type="submit" class="btn-chico">Rechazar</button>
+          </form>
+        </li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+
+  <p class="etiqueta mb-3">Mis partidas</p>
+  <ul class="grid gap-4 sm:grid-cols-2">
+    {% for p in partidas %}
+      <li>
+        <a href="{% url 'sala' p.pk %}" class="tarjeta block p-5 text-hueso no-underline transition hover:-translate-y-0.5 hover:border-bermellon/60">
+          <span class="etiqueta">Partida nº {{ p.pk }}</span>
+          <span class="mt-1 block font-display text-2xl">Mesa de {{ p.anfitrion.username }}</span>
+          <span class="mt-3 flex gap-2">
+            <span class="sello {% if p.estado == 'jugando' %}sello-ok{% else %}sello-oro{% endif %}">{{ p.get_estado_display }}</span>
+            {% if p.formato %}<span class="sello sello-apagado">{{ p.formato }}</span>{% endif %}
+          </span>
+        </a>
+      </li>
+    {% empty %}
+      <li class="border border-dashed border-linea p-6 text-hueso-2 sm:col-span-2">
+        No tienes partidas activas. Crea una e invita a tus amigos.</li>
+    {% endfor %}
+  </ul>
+{% endblock %}

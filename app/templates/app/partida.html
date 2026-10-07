@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Partida de {{ partida.anfitrion.username }}{% endblock %}
+{% block main_class %}{% endblock %}
+{% block head %}
+<style>
+  #mesa { display: grid; gap: 6px; padding: 6px; box-sizing: border-box; height: calc(100vh - 3.5rem);
+          grid-template-columns: minmax(0, 1fr) 290px; grid-template-rows: minmax(0, 1fr) minmax(0, 1.35fr) 165px;
+          grid-template-areas: "rivales lateral" "propio lateral" "mano lateral"; font-size: .85rem; }
+  #rivales { grid-area: rivales; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 6px; }
+  #propio { grid-area: propio; display: grid; }
+  #mano { grid-area: mano; --w: 96px; }
+  #lateral { grid-area: lateral; display: flex; flex-direction: column; gap: 8px; min-height: 0; padding: 4px;
+             background: rgb(20 16 15 / .85); border: 1px solid var(--color-linea); }
+
+  .jugador { --w: 54px; display: flex; flex-direction: column; min-height: 0;
+             background: rgb(6 10 8 / .25); border: 1px solid rgb(238 229 209 / .1); }
+  .jugador.propio { --w: 74px; }
+  .jugador.activo { border-color: var(--color-bermellon); box-shadow: 0 0 0 1px var(--color-bermellon), 0 0 24px rgb(224 85 47 / .25); }
+  .jugador.rindio { opacity: .4; filter: grayscale(.8); }
+  .jugador header { display: flex; flex-wrap: wrap; gap: .25rem .9rem; align-items: center; padding: 4px 8px;
+                    border-bottom: 1px dashed rgb(238 229 209 / .12); font: 500 11px/1.4 var(--font-mono); }
+  .jugador header strong { font: italic 600 1.05rem/1 var(--font-display); }
+  .jugador header b { display: inline-block; min-width: 2ch; text-align: center; font: 600 1rem/1 var(--font-display); }
+  .jugador header button { padding: 0 .4rem; font-size: 11px; box-shadow: none; }
+  .cmdr { opacity: .9; }
+  .cmdr .letal { color: #f08a80; }
+  .cuerpo { flex: 1; min-height: 0; display: grid; gap: 4px; padding: 4px;
+            grid-template-columns: calc(var(--w) + 12px) minmax(0, 1fr) calc(var(--w) + 12px);
+            grid-template-rows: minmax(0, 1.4fr) minmax(0, 1fr);
+            grid-template-areas: "mando campo pilas" "mando tierras pilas"; }
+
+  .zona.mando { grid-area: mando; } .zona.campo { grid-area: campo; } .zona.tierras { grid-area: tierras; }
+  .pilas { grid-area: pilas; display: flex; flex-direction: column; gap: 4px; overflow: auto; }
+  .pila { cursor: pointer; text-align: center; position: relative; flex: none; }
+  .pila .n { display: block; font: 500 11px/1.6 var(--font-mono); }
+  .cartas { display: flex; flex-wrap: wrap; gap: 3px; align-items: flex-start; }
+
+  .carta { position: relative; width: var(--w); aspect-ratio: 63 / 88; cursor: grab; transition: transform .15s; flex: none; }
+  .carta:hover { transform: translateY(-3px); }
+  .carta img, .carta .dorso, .carta .texto { width: 100%; height: 100%; border-radius: 4px; display: block; box-sizing: border-box; }
+  .carta.girada, .carta.girada:hover { transform: rotate(90deg); margin: 0 calc(var(--w) * .2); }
+  .carta.boca-abajo img { opacity: .45; }
+  .carta.ficha img, .carta.ficha .texto { outline: 2px solid var(--color-musgo); }
+  .pila .dorso { width: var(--w); aspect-ratio: 63 / 88; margin: auto; }
+  .texto { background: var(--color-hueso); color: var(--color-tinta); padding: 4px; overflow: hidden;
+           font: italic 600 .72rem/1.15 var(--font-display); border: 3px solid #0b0807; }
+  .chip { position: absolute; left: -3px; background: var(--color-tinta); color: var(--color-hueso);
+          border: 1px solid rgb(238 229 209 / .3); padding: 0 4px; white-space: nowrap;
+          font: 500 9px/1.5 var(--font-mono); letter-spacing: .04em; }
+
+  #info, #fases, .botones { display: flex; flex-wrap: wrap; gap: 5px; }
+  #info p { margin: 0; font-size: .8rem; }
+  #info b { font: italic 600 1rem/1 var(--font-display); }
+  #fases button.actual { background: var(--color-bermellon); border-color: var(--color-bermellon); color: var(--color-tinta); }
+  .ganador { font: italic 600 1.4rem/1.2 var(--font-display); color: var(--color-bermellon-2); }
+  #log { flex: 1; min-height: 0; overflow: auto; margin: 0; padding: 6px 6px 6px 1.6rem; background: rgb(6 5 5 / .5);
+         border: 1px solid var(--color-linea); font: 11px/1.5 var(--font-mono); color: var(--color-hueso-2); }
+  #log li::marker { color: var(--color-hueso-3); }
+  #log li[data-img] { color: var(--color-hueso); text-decoration: underline dotted rgb(224 85 47 / .7); }
+  #chat { display: flex; gap: 4px; } #chat input { flex: 1; min-width: 0; padding: 6px 8px; }
+
+  #vista { right: 300px; bottom: 175px; width: 260px; }
+  #menu { position: fixed; z-index: 40; background: var(--color-tinta-2); border: 1px solid var(--color-linea);
+          box-shadow: 6px 6px 0 0 rgb(0 0 0 / .55); padding: 4px; display: flex; flex-direction: column;
+          max-height: 80vh; overflow: auto; min-width: 210px; }
+  #menu button { justify-content: flex-start; text-align: left; background: none; color: var(--color-hueso); border: 0;
+                 box-shadow: none; padding: 6px 10px; font: 400 .85rem/1.2 var(--font-sans); letter-spacing: 0; text-transform: none; }
+  #menu button:hover { background: var(--color-bermellon); color: var(--color-tinta); }
+  #menu hr { width: 100%; border: 0; border-top: 1px dashed var(--color-linea); margin: 3px 0; }
+  #dialogo { --w: 110px; position: fixed; inset: 10vh auto auto 50%; transform: translateX(-50%); z-index: 20;
+             width: min(900px, 90vw); max-height: 75vh; overflow: auto; padding: 1.25rem; color: var(--color-hueso);
+             background: var(--color-tinta-2); border: 1px solid var(--color-linea); box-shadow: 10px 10px 0 0 rgb(0 0 0 / .55); }
+  #aviso { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); z-index: 50; padding: .6rem 1rem;
+           background: var(--color-tinta-2); color: var(--color-hueso); border-left: 4px solid var(--color-sangre);
+           box-shadow: 6px 6px 0 0 rgb(0 0 0 / .55); font: 500 12px/1.4 var(--font-mono); }
+</style>
+{% endblock %}
+{% block content %}
+<div id="mesa" class="fieltro" data-ws="/ws/game/{{ partida.pk }}/" data-accion="{% url 'accion_partida' partida.pk %}"
+     data-salir="{% url 'partidas' %}" data-csrf="{{ csrf_token }}">
+  <div id="rivales"></div>
+  <div id="propio"></div>
+  <div id="mano" class="zona"></div>
+  <aside id="lateral">
+    <div id="info"></div>
+    <div id="fases"></div>
+    <div class="botones">
+      <button data-accion="pasar_turno" id="pasar"><strong>Pasar turno</strong></button>
+      <button data-accion="robar">Robar</button>
+      <button data-accion="enderezar">Enderezar todo</button>
+      <button data-accion="barajar">Barajar</button>
+      <button data-accion="mulligan">Mulligan</button>
+      <button data-accion="mirar">Mirar arriba…</button>
+      <button data-accion="buscar">Buscar en biblioteca</button>
+      <button data-accion="moler">Moler…</button>
+      <button data-accion="revelar_mano">Revelar mano</button>
+      <button data-accion="ficha">Crear ficha…</button>
+      <button data-accion="dado">Dado…</button>
+      <button data-accion="moneda">Moneda</button>
+      <button data-accion="rendirse">Rendirse</button>
+    </div>
+    <ol id="log"></ol>
+    <form id="chat"><input name="texto" maxlength="300" placeholder="Chat…" autocomplete="off" aria-label="Mensaje"><button>Enviar</button></form>
+    <p class="pista">Clic: girar · Doble clic en la mano: jugar · Clic derecho
+      (o mantener pulsado): más acciones · Arrastrar: mover (Shift al soltar en la biblioteca: al fondo).</p>
+  </aside>
+</div>
+<img id="vista" hidden alt="">
+<div id="menu" hidden></div>
+<dialog id="dialogo">
+  <h3 id="dialogo-titulo"></h3>
+  <div id="dialogo-cartas" class="cartas"></div>
+  <p id="dialogo-pie"></p>
+  <button id="dialogo-cerrar">Cerrar</button>
+</dialog>
+<div id="aviso" hidden role="alert"></div>
+<script src="{% static 'app/partida.js' %}"></script>
+{% endblock %}

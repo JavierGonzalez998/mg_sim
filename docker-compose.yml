@@ -1,0 +1,63 @@
+# Producción: nginx (entrada pública) → app (Daphne: HTTP + WebSockets), MySQL y Redis.
+#   cp .env.example .env   # y cambia las claves
+#   docker compose up -d --build
+services:
+  proxy:
+    build:
+      context: .
+      target: proxy
+    restart: unless-stopped
+    ports:
+      - "${PUERTO:-80}:80"
+    depends_on:
+      - web
+
+  web:
+    build:
+      context: .
+      target: app
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      MYSQL_HOST: db
+      MYSQL_PORT: "3306"
+      REDIS_URL: redis://redis:6379/0
+    # Sin puerto publicado: solo se llega a través de nginx.
+    expose:
+      - "8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  db:
+    image: mysql:8.4
+    restart: unless-stopped
+    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci"]
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+    volumes:
+      - mysql:/var/lib/mysql
+    healthcheck:
+      # Por TCP: durante la inicialización MySQL no escucha en la red, así que solo pasa cuando está listo.
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u root -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  mysql:

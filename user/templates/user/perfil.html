@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}Mi perfil{% endblock %}
+{% block content %}
+  <div class="mb-10 flex flex-wrap items-end gap-6 border-b border-linea pb-8">
+    <div class="avatar size-20 text-4xl">{{ user.username|first|upper }}</div>
+    <div>
+      <p class="etiqueta mb-1">Perfil · desde {{ user.date_joined|date:"d/m/Y" }}</p>
+      <h1 class="mb-0">Perfil de <span class="cursiva">{{ user.username }}</span></h1>
+    </div>
+  </div>
+
+  <div class="grid gap-8 md:grid-cols-3">
+    <div>
+      <p class="etiqueta mb-4">Datos</p>
+      <dl>
+        <dt>Usuario</dt><dd>{{ user.username }}</dd>
+        <dt>Nombre</dt><dd>{{ user.get_full_name|default:"—" }}</dd>
+        <dt>Correo</dt><dd class="break-all">{{ user.email|default:"—" }}</dd>
+        <dt>Último acceso</dt><dd>{{ user.last_login|date:"d/m/Y H:i" }}</dd>
+      </dl>
+    </div>
+
+    <section id="amigos" class="tarjeta md:col-span-2">
+      <h2 class="mt-0">Amigos</h2>
+      <form method="get" action="{% url 'buscar_usuarios' %}" class="flex items-end gap-2">
+        <div class="flex-1">
+          <label for="id_q">Buscar usuarios</label>
+          <input id="id_q" name="q" type="search" required autocomplete="off" placeholder="Nombre de usuario">
+        </div>
+        <button type="submit" class="btn-primario">Buscar</button>
+      </form>
+
+      {% if recibidas %}
+        <p class="etiqueta mt-8 mb-2">Solicitudes recibidas</p>
+        <ul>
+          {% for am in recibidas %}
+            <li class="fila">
+              <a href="{% url 'ver_perfil' am.de.username %}" class="mr-auto">{{ am.de.username }}</a>
+              <form method="post" action="{% url 'aceptar_solicitud' am.pk %}">
+                {% csrf_token %}<button type="submit" class="btn-primario btn-chico">Aceptar</button>
+              </form>
+              <form method="post" action="{% url 'eliminar_amistad' am.pk %}">
+                {% csrf_token %}<button type="submit" class="btn-chico">Rechazar</button>
+              </form>
+            </li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+
+      {% if enviadas %}
+        <p class="etiqueta mt-8 mb-2">Solicitudes enviadas</p>
+        <ul>
+          {% for am in enviadas %}
+            <li class="fila">
+              <a href="{% url 'ver_perfil' am.a.username %}">{{ am.a.username }}</a>
+              <span class="sello sello-apagado mr-auto">pendiente</span>
+              <form method="post" action="{% url 'eliminar_amistad' am.pk %}">
+                {% csrf_token %}<button type="submit" class="btn-chico">Cancelar</button>
+              </form>
+            </li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+
+      <p class="etiqueta mt-8 mb-2">Mis amigos</p>
+      <ul>
+        {% for am, amigo in amigos %}
+          <li class="fila">
+            <span class="avatar size-7 text-sm">{{ amigo.username|first|upper }}</span>
+            <a href="{% url 'ver_perfil' amigo.username %}" class="mr-auto">{{ amigo.username }}</a>
+            <form method="post" action="{% url 'eliminar_amistad' am.pk %}"
+                  onsubmit="return confirm('¿Eliminar a {{ amigo.username|escapejs }} de tus amigos?')">
+              {% csrf_token %}<button type="submit" class="btn-peligro btn-chico">Eliminar</button>
+            </form>
+          </li>
+        {% empty %}
+          <li class="py-2 text-hueso-2">Aún no tienes amigos. Busca usuarios para enviarles una solicitud.</li>
+        {% endfor %}
+      </ul>
+    </section>
+  </div>
+
+  <div class="mt-12">
+    {% include "app/_mazos.html" %}
+  </div>
+{% endblock %}

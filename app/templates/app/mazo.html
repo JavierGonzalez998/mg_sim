@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}{{ mazo.nombre }}{% endblock %}
+{% block main_class %}mx-auto max-w-7xl px-4 py-10 sm:px-6{% endblock %}
+{% block content %}
+  <div class="mb-10 flex flex-wrap items-end justify-between gap-6 border-b border-linea pb-8">
+    <div>
+      <p class="etiqueta mb-2">
+        {{ total }} cartas{% if mazo.formato %} · {{ mazo.formato }}{% endif %} ·
+        <a href="https://moxfield.com/decks/{{ mazo.moxfield_id }}" target="_blank" rel="noopener">Moxfield ↗</a>
+      </p>
+      <h1 class="mb-0 text-5xl">{{ mazo.nombre }}</h1>
+    </div>
+    <a href="{% url 'probar' %}?mazo={{ mazo.pk }}" class="boton btn-primario px-6 py-3">Probar en el tablero</a>
+  </div>
+  {% for categoria, cartas, cantidad in grupos %}
+    <h2 class="flex items-baseline gap-3">{{ categoria }}
+      <span class="font-mono text-sm font-normal text-hueso-3">{{ cantidad }}</span>
+      <span class="h-px flex-1 self-center bg-linea"></span></h2>
+    <div class="grid grid-cols-[repeat(auto-fill,minmax(140px,1fr))] gap-4">
+      {% for c in cartas %}
+        <figure class="relative m-0 transition duration-200 hover:z-10 hover:-translate-y-1 hover:rotate-1">
+          <img src="{{ c.imagen }}" alt="{{ c.nombre }}" title="{{ c.nombre }} {{ c.coste }}" loading="lazy"
+               class="block w-full rounded-[4.75%/3.5%] shadow-[5px_5px_0_0_rgb(0_0_0/.5)]">
+          {% if c.cantidad > 1 %}
+            <figcaption class="absolute top-[9%] -left-2 bg-bermellon px-2 py-0.5 font-mono text-xs font-medium text-tinta shadow-[2px_2px_0_0_rgb(0_0_0/.6)]">×{{ c.cantidad }}</figcaption>
+          {% endif %}
+        </figure>
+      {% endfor %}
+    </div>
+  {% endfor %}
+{% endblock %}

@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Probar mazos{% endblock %}
+{% block content %}
+  <div class="grid items-start gap-12 md:grid-cols-2">
+    <div>
+      <p class="etiqueta mb-4">Modo solitario</p>
+      <h1 class="text-6xl">Elige un mazo<br>para <span class="cursiva">probar.</span></h1>
+      <p class="max-w-sm text-hueso-2">
+        Roba tu mano inicial, haz mulligan y juega turnos de prueba. Los enlaces de Moxfield se cargan sin guardarse;
+        para guardarlos, impórtalos en <a href="{% url 'mazos' %}">Mis mazos</a>.
+      </p>
+    </div>
+    <form method="get" class="formulario tarjeta p-8">
+      {{ form.as_p }}
+      <button type="submit" class="btn-primario mt-2 w-full py-3">Probar</button>
+    </form>
+  </div>
+{% endblock %}

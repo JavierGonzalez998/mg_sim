@@ -1,0 +1,25 @@
+# Entornos y dependencias
+venv/
+.venv/
+node_modules/
+
+# Python
+__pycache__/
+*.py[cod]
+
+# Django
+db.sqlite3
+db.sqlite3-journal
+staticfiles/
+media/
+
+# Secretos (se versiona .env.example, no .env)
+.env
+.env.*
+!.env.example
+
+# Editores y sistema
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

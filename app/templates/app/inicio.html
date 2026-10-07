@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Inicio{% endblock %}
+{% block main_class %}{% endblock %}
+{% block content %}
+  <section class="mx-auto grid min-h-[calc(100vh-3.5rem)] max-w-6xl overflow-x-clip items-center gap-12 px-4 py-16 sm:px-6 md:grid-cols-[1.25fr_1fr]">
+    <div>
+      <h1 class="mb-8 text-6xl leading-[.95] sm:text-7xl lg:text-8xl">
+        Baraja, roba<br><span class="cursiva">y juega</span> con<br>tus amigos.
+      </h1>
+      <p class="mb-10 max-w-lg text-lg text-hueso-2">
+        Importa tus mazos desde Moxfield, róbalos en una mesa de prueba y siéntate a jugar
+        en partidas de dos a cinco jugadores, en tiempo real.
+      </p>
+      <div class="flex flex-wrap gap-4">
+        {% if user.is_authenticated %}
+          <a href="{% url 'partidas' %}" class="boton btn-primario px-6 py-3">Ir a la mesa</a>
+        {% else %}
+          <a href="{% url 'registro' %}" class="boton btn-primario px-6 py-3">Crear cuenta</a>
+        {% endif %}
+        <a href="#caracteristicas" class="boton btn-fantasma px-6 py-3">Leer más ↓</a>
+      </div>
+    </div>
+
+    {# Abanico de comandantes. Imágenes de Moxfield (assets.moxfield.net), guardadas en app/static/app/cartas/. #}
+    <div class="relative mx-auto h-80 w-full max-w-[22rem] sm:h-[25rem] sm:max-w-[30rem]">
+      <img src="{% static 'app/cartas/winota.webp' %}" alt="Winota, Joiner of Forces" width="488" height="680"
+           class="absolute top-10 left-0 w-40 -rotate-12 rounded-[4.75%/3.5%] shadow-[8px_8px_0_0_rgb(0_0_0/.45)] transition duration-300 hover:z-20 hover:-translate-y-3 sm:w-52">
+      <img src="{% static 'app/cartas/kinnan.webp' %}" alt="Kinnan, Bonder Prodigy" width="488" height="680"
+           class="absolute top-0 left-1/2 z-10 w-40 -translate-x-1/2 rounded-[4.75%/3.5%] shadow-[8px_8px_0_0_rgb(0_0_0/.45)] transition duration-300 hover:z-20 hover:-translate-y-3 sm:w-52">
+      <img src="{% static 'app/cartas/krenko.webp' %}" alt="Krenko, Mob Boss" width="488" height="680"
+           class="absolute top-10 right-0 w-40 rotate-12 rounded-[4.75%/3.5%] shadow-[8px_8px_0_0_rgb(0_0_0/.45)] transition duration-300 hover:z-20 hover:-translate-y-3 sm:w-52">
+    </div>
+  </section>
+
+  <div class="franja-mana"></div>
+
+  <section id="caracteristicas" class="mx-auto max-w-6xl px-4 py-24 sm:px-6">
+    <p class="etiqueta mb-2">Lo que puedes hacer</p>
+    <h2 class="mt-0 mb-12 text-4xl">Tres formas de <span class="cursiva">jugar</span></h2>
+    <ol>
+      <li class="grid gap-4 border-t border-linea py-10 md:grid-cols-[8rem_1fr_1.4fr] md:items-baseline">
+        <span class="font-display text-6xl text-bermellon italic">I.</span>
+        <h3 class="m-0 text-3xl">Importa desde Moxfield</h3>
+        <p class="text-hueso-2">Pega el enlace de un mazo público y lo verás ordenado como en una mesa: comandante,
+          criaturas, hechizos y tierras, cada carta con su imagen.</p>
+      </li>
+      <li class="grid gap-4 border-t border-linea py-10 md:grid-cols-[8rem_1fr_1.4fr] md:items-baseline">
+        <span class="font-display text-6xl text-bermellon italic">II.</span>
+        <h3 class="m-0 text-3xl">Prueba en solitario</h3>
+        <p class="text-hueso-2">Roba manos iniciales, haz mulligan y juega turnos de prueba para saber si tu mazo
+          arranca como esperas.</p>
+      </li>
+      <li class="grid gap-4 border-y border-linea py-10 md:grid-cols-[8rem_1fr_1.4fr] md:items-baseline">
+        <span class="font-display text-6xl text-bermellon italic">III.</span>
+        <h3 class="m-0 text-3xl">Juega con amigos</h3>
+        <p class="text-hueso-2">De dos a cinco jugadores en tiempo real, en Commander, Modern, Standard o el formato
+          que elija el anfitrión.</p>
+      </li>
+    </ol>
+  </section>
+
+  <section id="como-funciona" class="border-y border-linea bg-tinta-2/60 px-4 py-24 sm:px-6">
+    <div class="mx-auto max-w-6xl">
+      <p class="etiqueta mb-2">Cómo funciona</p>
+      <h2 class="mt-0 mb-12 text-4xl">De la lista a la <span class="cursiva">mesa</span></h2>
+      <ol class="grid gap-10 md:grid-cols-3">
+        <li class="border-t-2 border-bermellon pt-5">
+          <p class="etiqueta mb-3 text-bermellon-2">Paso 01</p>
+          <h3 class="mt-0">Regístrate</h3>
+          <p class="text-hueso-2">Una cuenta con usuario y correo. Nada más.</p>
+        </li>
+        <li class="border-t-2 border-hueso/30 pt-5">
+          <p class="etiqueta mb-3">Paso 02</p>
+          <h3 class="mt-0">Trae tus mazos</h3>
+          <p class="text-hueso-2">Guárdalos en tu perfil o úsalos directamente con su enlace.</p>
+        </li>
+        <li class="border-t-2 border-hueso/30 pt-5">
+          <p class="etiqueta mb-3">Paso 03</p>
+          <h3 class="mt-0">Siéntate a jugar</h3>
+          <p class="text-hueso-2">Prueba en solitario o invita a tus amigos a una partida.</p>
+        </li>
+      </ol>
+    </div>
+  </section>
+
+  <section id="empezar" class="px-4 py-24 sm:px-6">
+    <div class="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-8 bg-bermellon p-10 text-tinta shadow-[10px_10px_0_0_rgb(0_0_0/.5)] sm:p-14">
+      <h2 class="m-0 max-w-xl text-4xl leading-tight sm:text-5xl">¿Tu mazo aguanta una<br><em>partida de verdad?</em></h2>
+      {% if user.is_authenticated %}
+        <a class="boton border-tinta bg-tinta px-6 py-3 text-hueso hover:bg-tinta-3" href="{% url 'perfil' %}">Ir a mi perfil</a>
+      {% else %}
+        <a class="boton border-tinta bg-tinta px-6 py-3 text-hueso hover:bg-tinta-3" href="{% url 'registro' %}">Crear cuenta gratis</a>
+      {% endif %}
+    </div>
+  </section>
+
+  <footer class="border-t border-linea px-4 py-8 sm:px-6">
+    <div class="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4">
+      <span class="font-display text-lg italic">MG Simulator</span>
+      <span class="etiqueta">© {% now "Y" %} · Proyecto de fans, sin relación con Wizards of the Coast</span>
+    </div>
+  </footer>
+{% endblock %}
