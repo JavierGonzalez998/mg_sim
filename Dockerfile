@@ -43,5 +43,7 @@ CMD ["daphne", "--bind", "0.0.0.0", "--port", "8000", "--proxy-headers", "main.a
 
 # 4) Proxy (target "proxy"): nginx sirve /static/ ya recolectados y reenvía HTTP y WebSockets a "app".
 FROM nginx:stable-alpine AS proxy
-COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
+# Toma los DNS del contenedor y genera conf.d/default.conf desde la plantilla al arrancar.
+ENV NGINX_ENTRYPOINT_LOCAL_RESOLVERS=1
+COPY docker/nginx.conf.template /etc/nginx/templates/default.conf.template
 COPY --from=app /app/staticfiles /usr/share/nginx/static

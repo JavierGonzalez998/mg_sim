@@ -1,7 +1,11 @@
 # Proxy delante de Daphne: sirve /static/ y reenvía HTTP y WebSockets a la app.
-# DNS interno de Docker. Sin esto nginx resuelve "web" una sola vez al arrancar y, si el contenedor
-# se recrea con otra IP (p. ej. tras `docker compose up -d --build`), responde 502 hasta reiniciarlo.
-resolver 127.0.0.11 valid=10s ipv6=off;
+# Es una plantilla: al arrancar, la imagen de nginx sustituye ${NGINX_LOCAL_RESOLVERS} y la guarda
+# como /etc/nginx/conf.d/default.conf (las variables propias de nginx, como $host, no se tocan).
+# Vuelve a resolver "web" cada 10 s: si el contenedor se recrea con otra IP (p. ej. tras
+# `docker compose up -d --build`), nginx la sigue en lugar de responder 502.
+# Los DNS salen de /etc/resolv.conf del contenedor (NGINX_ENTRYPOINT_LOCAL_RESOLVERS): 127.0.0.11
+# en Docker, la puerta de enlace de la red en Podman, etc. No hay que escribir ninguna IP fija.
+resolver ${NGINX_LOCAL_RESOLVERS} valid=10s ipv6=off;
 
 upstream django {
     zone django 64k;
