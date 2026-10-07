@@ -5,7 +5,9 @@ from urllib.request import Request, urlopen
 
 from django import forms
 from django.contrib import messages
+from django.conf import settings
 from django.contrib.auth.decorators import login_required
+from django.core.cache import cache
 from django.db import transaction
 from django.db.models import Q, Sum
 from django.http import Http404, JsonResponse
@@ -127,6 +129,46 @@ def inicio(request):
     return render(request, "app/inicio.html")
 
 
+GITHUB_REPO = "JavierGonzalez998/mg_sim"
+
+
+def _github(ruta, datos=None):
+    """GET a la API de GitHub del repositorio, o POST con `datos` (JSON)."""
+    cabeceras = {"Accept": "application/vnd.github+json", "User-Agent": "mg_simulator/0.1"}
+    if settings.GITHUB_TOKEN:
+        cabeceras["Authorization"] = f"Bearer {settings.GITHUB_TOKEN}"
+    cuerpo = None if datos is None else json.dumps(datos).encode()
+    if cuerpo:
+        cabeceras["Content-Type"] = "application/json"
+    req = Request(f"https://api.github.com/repos/{GITHUB_REPO}/{ruta}", data=cuerpo, headers=cabeceras)
+    with urlopen(req, timeout=10) as r:
+        return json.load(r)
+
+
+def _cambios():
+    """Las releases de GitHub o, si aún no hay ninguna, los últimos commits."""
+    cambios = [{"etiqueta": r["tag_name"], "titulo": r["name"] or r["tag_name"], "detalle": r["body"] or "",
+                "fecha": r["published_at"], "url": r["html_url"]} for r in _github("releases?per_page=10")]
+    if not cambios:
+        for c in _github("commits?per_page=10"):
+            titulo, _, detalle = c["commit"]["message"].partition("\n")
+            cambios.append({"etiqueta": c["sha"][:7], "titulo": titulo, "detalle": detalle.strip(),
+                            "fecha": c["commit"]["author"]["date"], "url": c["html_url"]})
+    return cambios
+
+
+def versiones(request):
+    """Cambios del proyecto para la portada. Se guardan en caché: unas pocas consultas a GitHub por hora."""
+    datos = cache.get("versiones")
+    if datos is None:
+        try:
+            datos, duracion = {"cambios": _cambios()}, 600
+        except (URLError, TimeoutError, ValueError, KeyError):
+            datos, duracion = {"error": "No se pudieron cargar los cambios desde GitHub."}, 60
+        cache.set("versiones", datos, duracion)
+    return JsonResponse(datos, status=502 if "error" in datos else 200)
+
+
 @login_required
 def mazos(request):
     form = ImportarForm(request.POST or None)
@@ -185,7 +227,16 @@ def mazo(request, pk):
     return render(request, "app/mazo.html", {"mazo": mazo, "grupos": grupos, "total": total})
 
 
+def solo_pc(vista):
+    """El tablero aún no funciona con pantallas táctiles: base.html lo oculta en ellas y muestra un aviso."""
+    def envuelta(request, *args, **kwargs):
+        request.solo_pc = True
+        return vista(request, *args, **kwargs)
+    return envuelta
+
+
 @login_required
+@solo_pc
 def probar(request):
     form = ProbarForm(request.GET or None, usuario=request.user)
     if form.is_valid():
@@ -224,6 +275,7 @@ def amigos_de(usuario):
 
 
 @login_required
+@solo_pc
 def partidas(request):
     mias = (Partida.objects.filter(jugadores__usuario=request.user, jugadores__aceptada=True)
             .exclude(estado="terminada").select_related("anfitrion").order_by("-creada"))
@@ -239,6 +291,7 @@ def crear_partida(request):
 
 
 @login_required
+@solo_pc
 def sala(request, pk):
     partida, yo = _mi_jugador(request, pk, aceptada=False)
     if partida.estado != "sala":

@@ -173,3 +173,10 @@
   position: fixed; pointer-events: none; z-index: 30; border-radius: 4.75% / 3.5%;
   box-shadow: 8px 8px 0 0 rgb(0 0 0 / .55); outline: 1px solid rgb(238 229 209 / .2);
 }
+
+/* Tablero solo para PC: en pantallas táctiles (sin ratón) se oculta y se muestra el aviso. */
+.aviso-tactil { display: none; }
+@media (hover: none) and (pointer: coarse) {
+  .aviso-tactil { display: block; }
+  .solo-pc { display: none; }
+}

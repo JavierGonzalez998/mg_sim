@@ -1,9 +1,13 @@
 from datetime import timedelta
 from functools import wraps
+from urllib.error import HTTPError, URLError
 
+from django import forms
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
+from django.core.cache import cache
 from django.core.exceptions import PermissionDenied
 from django.db.models import Count, Q
 from django.shortcuts import get_object_or_404, redirect, render
@@ -11,6 +15,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from app.models import Mazo, Partida, avisar_cambio
+from app.views import GITHUB_REPO, _github
 from user.models import Amistad
 
 
@@ -25,8 +30,15 @@ def solo_superusuario(vista):
     return envoltura
 
 
+class VersionForm(forms.Form):
+    etiqueta = forms.RegexField(r"^v\d+\.\d+\.\d+$", max_length=30, label="Versión", help_text="Ej. v1.2.0",
+                                error_messages={"invalid": "Usa el formato v1.2.0."})
+    titulo = forms.CharField(max_length=120, required=False, label="Título", help_text="Opcional; por defecto, la versión.")
+    notas = forms.CharField(widget=forms.Textarea(attrs={"rows": 6}), required=False, label="Cambios")
+
+
 @solo_superusuario
-def panel(request):
+def panel(request, form_version=None):
     hace_7_dias = timezone.now() - timedelta(days=7)
     partidas_por_estado = dict(Partida.objects.values_list("estado").annotate(n=Count("pk")))
     q = request.GET.get("q", "").strip()
@@ -49,7 +61,36 @@ def panel(request):
         "partidas": (Partida.objects.exclude(estado="terminada").select_related("anfitrion")
                      .annotate(n_jugadores=Count("jugadores", filter=Q(jugadores__aceptada=True)))
                      .order_by("-creada")[:25]),
+        "form_version": form_version or VersionForm(),
+        "github_token": bool(settings.GITHUB_TOKEN),
+        "github_repo": GITHUB_REPO,
     })
+
+
+@solo_superusuario
+@require_POST
+def publicar_version(request):
+    """Crea una release en GitHub; la portada la muestra en «Versiones». Si algo falla, se conserva el formulario."""
+    form = VersionForm(request.POST)
+    if not settings.GITHUB_TOKEN:
+        messages.error(request, "Falta GITHUB_TOKEN: configura un token con permiso de escritura en Contents.")
+    elif form.is_valid():
+        d = form.cleaned_data
+        try:
+            release = _github("releases", {"tag_name": d["etiqueta"], "name": d["titulo"] or d["etiqueta"],
+                                           "body": d["notas"]})
+        except HTTPError as e:
+            messages.error(request, {
+                422: f"La versión {d['etiqueta']} ya existe en GitHub.",
+            }.get(e.code, f"GitHub rechazó la publicación ({e.code}). Revisa que el token tenga permiso de "
+                          "escritura en Contents para el repositorio."))
+        except (URLError, TimeoutError, ValueError):
+            messages.error(request, "No se pudo conectar con GitHub.")
+        else:
+            cache.delete("versiones")  # que la portada la muestre ya
+            messages.success(request, f"Publicada la versión {release['tag_name']}.")
+            return redirect("panel")
+    return panel(request, form)
 
 
 @solo_superusuario

@@ -1,10 +1,12 @@
 import io
 import json
 from unittest.mock import patch
+from urllib.error import URLError
 
 from channels.routing import URLRouter
 from channels.testing import WebsocketCommunicator
 from django.contrib.auth.models import User
+from django.core.cache import cache
 from django.test import TestCase
 
 from user.models import Amistad
@@ -213,13 +215,50 @@ class JuegoTests(TestCase):
         self.assertEqual((self.e["activo"], self.e["turno"]), (1 - activo, 2))
         self.assertEqual(len(self.zona(1 - activo, "mano")), 8)
 
-        privado = juego.aplicar(self.e, self.ana, {"accion": "mirar", "n": 3})
-        self.assertEqual([c["id"] for c in privado["vistazo"]], self.zona(self.ana, "biblioteca")[:3])
+        nuevo = self.e["activo"]
+        privado = juego.aplicar(self.e, nuevo, {"accion": "mirar", "n": 3})
+        self.assertEqual([c["id"] for c in privado["vistazo"]], self.zona(nuevo, "biblioteca")[:3])
 
         juego.aplicar(self.e, self.ana, {"accion": "rendirse"})
         self.assertEqual(self.e["ganador"], self.bob)
         with self.assertRaises(juego.AccionInvalida):
             juego.aplicar(self.e, self.bob, {"accion": "robar"})
+
+    def test_prioridad_y_pila(self):
+        activo, otro = self.e["activo"], 1 - self.e["activo"]
+        juego.aplicar(self.e, otro, {"accion": "robar"})  # preparación: todos actúan (mulligans)
+        juego.aplicar(self.e, activo, {"accion": "fase", "fase": "principal1"})
+        with self.assertRaisesMessage(juego.AccionInvalida, "Responder"):
+            juego.aplicar(self.e, otro, {"accion": "robar"})
+
+        hechizo = self.zona(activo, "mano")[0]
+        juego.aplicar(self.e, activo, {"accion": "mover", "carta": hechizo, "zona": "pila"})
+        juego.aplicar(self.e, otro, {"accion": "responder"})
+        with self.assertRaises(juego.AccionInvalida):  # ahora el activo espera
+            juego.aplicar(self.e, activo, {"accion": "robar"})
+        respuesta = self.zona(otro, "mano")[0]
+        juego.aplicar(self.e, otro, {"accion": "mover", "carta": respuesta, "zona": "pila"})
+        self.assertEqual(juego.vista(self.e, activo)["pila"][-1]["controlador"], otro)
+        juego.aplicar(self.e, otro, {"accion": "pasar_prioridad"})
+        self.assertEqual(juego.vista(self.e, activo)["prioridad"], activo)
+
+        with self.assertRaisesMessage(juego.AccionInvalida, "pila"):
+            juego.aplicar(self.e, activo, {"accion": "pasar_turno"})
+        with self.assertRaisesMessage(juego.AccionInvalida, "arriba"):
+            juego.aplicar(self.e, activo, {"accion": "mover", "carta": hechizo, "zona": "cementerio"})
+        juego.aplicar(self.e, activo, {"accion": "mover", "carta": respuesta, "zona": "campo"})
+        self.assertIn(respuesta, self.zona(otro, "campo"))  # resuelve en el campo de quien la lanzó
+        juego.aplicar(self.e, activo, {"accion": "mover", "carta": hechizo, "zona": "cementerio"})
+        juego.aplicar(self.e, activo, {"accion": "pasar_turno"})
+
+    def test_tiempo_de_turno(self):
+        activo = self.e["activo"]
+        with self.assertRaisesMessage(juego.AccionInvalida, "tiempo"):
+            juego.aplicar(self.e, 1 - activo, {"accion": "tiempo"})
+        self.e["inicio_turno"] -= juego.DURACION_TURNO
+        juego.aplicar(self.e, 1 - activo, {"accion": "tiempo"})
+        self.assertEqual((self.e["activo"], self.e["turno"]), (1 - activo, 2))
+        self.assertGreater(juego.vista(self.e, activo)["restante"], juego.DURACION_TURNO - 5)
 
     def test_mulligan(self):
         juego.aplicar(self.e, self.ana, {"accion": "mulligan"})
@@ -376,3 +415,48 @@ class ConfigMysqlTests(TestCase):
         from django.core.exceptions import ImproperlyConfigured
         with self.assertRaisesMessage(ImproperlyConfigured, "MYSQL_URL"):
             self.config(MYSQL_DATABASE="railway", MYSQL_ROOT_PASSWORD="x")
+
+
+class MovilTests(TestCase):
+    def test_tablero_con_aviso_tactil(self):
+        self.client.force_login(User.objects.create_user("ana"))
+        for url in ("/test/", "/game/"):
+            self.assertContains(self.client.get(url), 'class="solo-pc"')
+        self.assertNotContains(self.client.get("/mazos/"), "aviso-tactil")
+
+
+def github_falso(req, *a, **k):
+    commits = [{"sha": "c404f963169f", "html_url": "https://github.com/x/commit/c404f96",
+                "commit": {"message": "Mesa con pila\n\nY prioridad", "author": {"date": "2026-10-07T15:48:04Z"}}}]
+    return io.BytesIO(json.dumps([] if "releases" in req.full_url else commits).encode())
+
+
+class VersionesTests(TestCase):
+    def setUp(self):
+        cache.clear()
+
+    @patch("app.views.urlopen", side_effect=github_falso)
+    def test_commits_en_cache(self, urlopen):
+        for _ in range(2):
+            r = self.client.get("/versiones/")
+        self.assertEqual(r.json()["cambios"], [{
+            "etiqueta": "c404f96", "titulo": "Mesa con pila", "detalle": "Y prioridad",
+            "fecha": "2026-10-07T15:48:04Z", "url": "https://github.com/x/commit/c404f96"}])
+        self.assertEqual(urlopen.call_count, 2)  # releases (vacías) + commits; la segunda visita sale de la caché
+
+    @patch("app.views.urlopen", side_effect=URLError("sin red"))
+    def test_github_caido(self, urlopen):
+        self.assertEqual(self.client.get("/versiones/").status_code, 502)
+
+
+class NotificacionesTests(TestCase):
+    def test_invitaciones_y_solicitudes_en_la_barra(self):
+        ana, bob, eva = (User.objects.create_user(n) for n in ("ana", "bob", "eva"))
+        Amistad.objects.create(de=eva, a=ana)
+        partida = Partida.objects.create(anfitrion=bob, formato="commander")
+        Jugador.objects.create(partida=partida, usuario=ana)
+        self.client.force_login(ana)
+        r = self.client.get("/mazos/")
+        self.assertContains(r, 'aria-label="Notificaciones (2)"')
+        self.assertContains(r, "bob te invitó a una partida")
+        self.assertContains(r, f'/user/amigos/{Amistad.objects.get().pk}/aceptar/')

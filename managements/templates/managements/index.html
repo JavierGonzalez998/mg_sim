@@ -98,4 +98,23 @@
       </table>
     </div>
   </section>
+
+  <section class="mt-12">
+    <div class="mb-4 flex flex-wrap items-baseline justify-between gap-2">
+      <h2 class="m-0">Publicar versión</h2>
+      <a class="etiqueta" href="https://github.com/{{ github_repo }}/releases" target="_blank" rel="noopener">Versiones en GitHub →</a>
+    </div>
+    <p class="mb-6 max-w-2xl text-sm text-hueso-2">Crea una release en GitHub sobre el último commit de la rama principal.
+      Aparece al momento en la sección «Versiones» de la portada.</p>
+    {% if github_token %}
+      <form method="post" action="{% url 'publicar_version' %}" class="formulario tarjeta max-w-2xl p-6">
+        {% csrf_token %}
+        {{ form_version.as_p }}
+        <button type="submit" class="btn-primario">Publicar</button>
+      </form>
+    {% else %}
+      <p class="mensaje error max-w-2xl">Para publicar desde aquí, define <code>GITHUB_TOKEN</code> con un token de
+        GitHub con permiso de <strong>lectura y escritura en Contents</strong> sobre {{ github_repo }}.</p>
+    {% endif %}
+  </section>
 {% endblock %}

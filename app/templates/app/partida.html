@@ -52,6 +52,16 @@
   #info, #fases, .botones { display: flex; flex-wrap: wrap; gap: 5px; }
   #info p { margin: 0; font-size: .8rem; }
   #info b { font: italic 600 1rem/1 var(--font-display); }
+  .bloque { display: flex; flex-wrap: wrap; gap: 5px; padding: 6px; border: 1px solid var(--color-linea); }
+  .bloque h2 { width: 100%; margin: 0; }
+  #pasar, #responder, #pasar-prioridad { width: 100%; }
+  #prioridad { width: 100%; margin: 0; font-size: .8rem; }
+  #prioridad b { font: italic 600 1rem/1 var(--font-display); }
+  #pila { --w: 54px; width: 100%; min-height: calc(54px * 88 / 63 + 8px); display: flex; flex-wrap: wrap; gap: 3px;
+          align-items: flex-start; padding: 3px; border: 1px dashed var(--color-linea); }
+  #pila:empty::before { content: "Pila vacía"; margin: auto; font: 500 11px/1 var(--font-mono); color: var(--color-hueso-3); }
+  #pila .carta:first-child { outline: 2px solid var(--color-bermellon); }
+  .prio { color: var(--color-bermellon-2); }
   #fases button.actual { background: var(--color-bermellon); border-color: var(--color-bermellon); color: var(--color-tinta); }
   .ganador { font: italic 600 1.4rem/1.2 var(--font-display); color: var(--color-bermellon-2); }
   #log { flex: 1; min-height: 0; overflow: auto; margin: 0; padding: 6px 6px 6px 1.6rem; background: rgb(6 5 5 / .5);
@@ -84,9 +94,20 @@
   <div id="mano" class="zona"></div>
   <aside id="lateral">
     <div id="info"></div>
-    <div id="fases"></div>
-    <div class="botones">
+    <section class="bloque">
+      <h2 class="etiqueta">Fases</h2>
+      <div id="fases"></div>
       <button data-accion="pasar_turno" id="pasar"><strong>Pasar turno</strong></button>
+    </section>
+    <section class="bloque">
+      <h2 class="etiqueta">Pila y prioridad</h2>
+      <p id="prioridad"></p>
+      <div id="pila" class="zona" data-zona="pila" title="Pila: arrastra aquí para lanzar; se resuelve de arriba abajo"></div>
+      <button data-accion="responder" id="responder"><strong>Responder</strong></button>
+      <button data-accion="pasar_prioridad" id="pasar-prioridad">Pasar prioridad</button>
+    </section>
+    <section class="bloque botones">
+      <h2 class="etiqueta">Acciones</h2>
       <button data-accion="robar">Robar</button>
       <button data-accion="enderezar">Enderezar todo</button>
       <button data-accion="barajar">Barajar</button>
@@ -99,10 +120,10 @@
       <button data-accion="dado">Dado…</button>
       <button data-accion="moneda">Moneda</button>
       <button data-accion="rendirse">Rendirse</button>
-    </div>
+    </section>
     <ol id="log"></ol>
     <form id="chat"><input name="texto" maxlength="300" placeholder="Chat…" autocomplete="off" aria-label="Mensaje"><button>Enviar</button></form>
-    <p class="pista">Clic: girar · Doble clic en la mano: jugar · Clic derecho
+    <p class="pista">Clic: girar · Doble clic en la mano: lanzar a la pila (tierras: jugar) · Clic derecho
       (o mantener pulsado): más acciones · Arrastrar: mover (Shift al soltar en la biblioteca: al fondo).</p>
   </aside>
 </div>

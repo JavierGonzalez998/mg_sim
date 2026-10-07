@@ -220,6 +220,10 @@ else:
     MAILERS = {'default': {'BACKEND': 'django.core.mail.backends.console.EmailBackend'}}
 DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'webmaster@localhost')
 
+# Token de GitHub para las versiones: leerlas en la portada (opcional si el repositorio es público) y
+# publicarlas desde /manage/ (necesita permiso de escritura en Contents).
+GITHUB_TOKEN = os.environ.get('GITHUB_TOKEN', '')
+
 
 LOGIN_URL = 'login'
 LOGIN_REDIRECT_URL = 'perfil'

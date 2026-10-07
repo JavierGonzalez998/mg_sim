@@ -2,9 +2,12 @@
 
 No aplica las reglas del juego (como una mesa real, los jugadores mueven sus cartas);
 sí protege la información oculta: nadie ve la mano ni la biblioteca de otro.
+Prioridad: solo actúa quien la tiene (el jugador activo, salvo que otro pulse «Responder»). Las respuestas se
+apilan: al pasar la prioridad vuelve a quien la tenía antes. La pila de hechizos se resuelve de arriba abajo.
 El estado es un dict serializable a JSON que se guarda en Partida.juego.
 """
 import random
+import time
 
 ZONAS = ("biblioteca", "mano", "campo", "tierras", "cementerio", "exilio", "mando")
 OCULTAS = {"biblioteca", "mano"}
@@ -12,9 +15,10 @@ CAMPO = {"campo", "tierras"}
 FASES = ("comienzo", "principal1", "combate", "principal2", "final")
 NOMBRE_ZONA = {"biblioteca": "la biblioteca", "mano": "la mano", "campo": "el campo de batalla",
                "tierras": "el campo de batalla", "cementerio": "el cementerio", "exilio": "el exilio",
-               "mando": "la zona de mando"}
+               "mando": "la zona de mando", "pila": "la pila"}
 MAX_LOG = 200
 DANO_COMANDANTE_LETAL = 21
+DURACION_TURNO = 10 * 60  # segundos; al agotarse, el turno pasa solo
 
 
 class AccionInvalida(Exception):
@@ -40,7 +44,8 @@ def crear(jugadores, formato):
     orden = list(jugadores)
     random.shuffle(orden)
     e = {"formato": formato, "turno": 1, "activo": 0, "fase": "comienzo", "ganador": None,
-         "cartas": {}, "jugadores": [], "log": [], "sig": 0}
+         "cartas": {}, "jugadores": [], "log": [], "sig": 0, "pila": [], "prioridad": [0],
+         "inicio_turno": time.time()}
     for i, (uid, nombre, mazo) in enumerate(orden):
         e["jugadores"].append({"id": uid, "nombre": nombre, "vida": vida_inicial(formato), "veneno": 0,
                                "dano_comandante": {}, "mulligans": 0, "rindio": False,
@@ -51,7 +56,8 @@ def crear(jugadores, formato):
             _nueva_carta(e, i, c, "mando", comandante=True)
         random.shuffle(e["jugadores"][i]["zonas"]["biblioteca"])
         _robar(e, i, 7)
-    _log(e, f"Comienza la partida. Empieza {orden[0][1]}. Cada jugador robó 7 cartas.")
+    _log(e, f"Comienza la partida. Empieza {orden[0][1]}. Cada jugador robó 7 cartas. Mientras {orden[0][1]} "
+            f"no cambie de fase, todos pueden hacer sus mulligans.")
     return e
 
 
@@ -82,6 +88,8 @@ def _nombre(e, i):
 
 
 def _ubicar(e, cid):
+    if cid in e["pila"]:
+        return e["cartas"][cid]["controlador"], "pila"
     for i, j in enumerate(e["jugadores"]):
         for z, ids in j["zonas"].items():
             if cid in ids:
@@ -123,6 +131,19 @@ def _texto(a, clave, maximo):
     if not t:
         raise AccionInvalida("Falta el texto.")
     return t
+
+
+def _lista(e, i, z):
+    return e["pila"] if z == "pila" else e["jugadores"][i]["zonas"][z]
+
+
+def _con_prioridad(e):
+    return e["prioridad"][-1]
+
+
+def _preparacion(e):
+    """Antes de que el primer jugador cambie de fase todos actúan a la vez (mulligans)."""
+    return e["turno"] == 1 and e["fase"] == "comienzo"
 
 
 def _robar(e, i, n):
@@ -186,13 +207,19 @@ def a_mirar(e, yo, a):
 def a_mover(e, yo, a):
     cid, origen_j, origen_z = _carta(e, yo, a)
     zona = a.get("zona")
-    if zona not in ZONAS:
+    if zona not in ZONAS + ("pila",):
         raise AccionInvalida("Zona inválida.")
+    if origen_z == "pila":
+        if zona == "pila":
+            return
+        if cid != e["pila"][-1]:
+            raise AccionInvalida("La pila se resuelve en orden: primero la carta de arriba.")
     c = e["cartas"][cid]
-    # Al campo va al jugador elegido (cambia el control); a cualquier otra zona, siempre a la de su dueño.
-    destino_j = _jugador(e, a.get("jugador", yo)) if zona in CAMPO else c["dueno"]
+    # Al campo va al jugador elegido (cambia el control); desde la pila, por defecto a quien la lanzó;
+    # a cualquier otra zona, siempre a la de su dueño.
+    destino_j = _jugador(e, a.get("jugador", origen_j if origen_z == "pila" else yo)) if zona in CAMPO else c["dueno"]
     visible_antes = origen_z not in OCULTAS and not c["boca_abajo"]
-    e["jugadores"][origen_j]["zonas"][origen_z].remove(cid)
+    _lista(e, origen_j, origen_z).remove(cid)
 
     if origen_z in CAMPO and zona not in CAMPO:
         if c["ficha"]:
@@ -200,11 +227,16 @@ def a_mover(e, yo, a):
             _log(e, f"{_nombre(e, yo)} quitó la ficha {c['nombre']} (dejó de existir).")
             return
         _salir_del_campo(e, cid)
-    if origen_z == "mando" and zona in CAMPO and c["comandante"]:
+    if origen_z == "mando" and zona in CAMPO | {"pila"} and c["comandante"]:
         c["lanzamientos"] += 1
     if zona in CAMPO and a.get("boca_abajo"):
         c["boca_abajo"] = True  # jugar boca abajo (transfigurar, manifestar...) sin revelar la carta
 
+    if zona == "pila":
+        c["controlador"] = yo
+        e["pila"].append(cid)
+        _log(e, f"{_nombre(e, yo)} lanzó {c['nombre']}.", _publica(c))
+        return
     destino = e["jugadores"][destino_j]["zonas"][zona]
     if zona == "biblioteca" and a.get("posicion") != "abajo":
         destino.insert(0, cid)
@@ -371,6 +403,8 @@ def _pasar_turno(e):
     e["activo"] = _siguiente_vivo(e, e["activo"])
     e["turno"] += 1
     e["fase"] = "principal1"
+    e["prioridad"] = [e["activo"]]
+    e["inicio_turno"] = time.time()
     a_enderezar(e, e["activo"], {})
     _robar(e, e["activo"], 1)
     _log(e, f"Turno {e['turno']}: {_nombre(e, e['activo'])} enderezó y robó una carta.")
@@ -378,7 +412,35 @@ def _pasar_turno(e):
 
 def a_pasar_turno(e, yo, a):
     _solo_activo(e, yo)
+    if e["pila"]:
+        raise AccionInvalida("Resuelve la pila antes de pasar el turno.")
     _pasar_turno(e)
+
+
+def _restante(e):
+    return e["inicio_turno"] + DURACION_TURNO - time.time()
+
+
+def a_tiempo(e, yo, a):
+    """Lo pide el navegador de cualquier jugador cuando su cuenta atrás llega a cero."""
+    if _restante(e) > 2:  # margen por el desfase de los relojes
+        raise AccionInvalida("Al turno aún le queda tiempo.")
+    _log(e, f"⏱ Se acabó el tiempo de {_nombre(e, e['activo'])}.")
+    _pasar_turno(e)
+
+
+def a_responder(e, yo, a):
+    if _con_prioridad(e) == yo:
+        raise AccionInvalida("Ya tienes la prioridad.")
+    e["prioridad"].append(yo)
+    _log(e, f"✋ {_nombre(e, yo)} responde y toma la prioridad.")
+
+
+def a_pasar_prioridad(e, yo, a):
+    if len(e["prioridad"]) == 1:
+        raise AccionInvalida("Eres el jugador activo: la prioridad vuelve a ti cuando los demás terminan.")
+    e["prioridad"].pop()
+    _log(e, f"{_nombre(e, yo)} pasó la prioridad a {_nombre(e, _con_prioridad(e))}.")
 
 
 def a_rendirse(e, yo, a):
@@ -386,6 +448,7 @@ def a_rendirse(e, yo, a):
     if j["rindio"]:
         return
     j["rindio"] = True
+    e["prioridad"] = [i for i in e["prioridad"] if i != yo] or [e["activo"]]
     _log(e, f"{j['nombre']} se rindió.")
     vivos = [i for i, x in enumerate(e["jugadores"]) if not x["rindio"]]
     if len(vivos) == 1:
@@ -400,6 +463,14 @@ def a_chat(e, yo, a):
 
 
 ACCIONES = {nombre[2:]: f for nombre, f in globals().items() if nombre.startswith("a_")}
+SIN_PRIORIDAD = {a_chat, a_rendirse, a_responder, a_tiempo}
+
+
+def _actualizar(e):
+    """Partidas empezadas antes de que existieran la pila y la prioridad."""
+    e.setdefault("pila", [])
+    e.setdefault("prioridad", [e["activo"]])
+    e.setdefault("inicio_turno", time.time())
 
 
 def aplicar(e, yo, a):
@@ -409,8 +480,11 @@ def aplicar(e, yo, a):
         raise AccionInvalida("Acción desconocida.")
     if e["ganador"] is not None and f is not a_chat:
         raise AccionInvalida("La partida terminó.")
-    if e["jugadores"][yo]["rindio"] and f is not a_chat:
+    if e["jugadores"][yo]["rindio"] and f not in (a_chat, a_tiempo):
         raise AccionInvalida("Te rendiste; solo puedes usar el chat.")
+    _actualizar(e)
+    if f not in SIN_PRIORIDAD and _con_prioridad(e) != yo and not _preparacion(e):
+        raise AccionInvalida(f"Tiene la prioridad {_nombre(e, _con_prioridad(e))}. Pulsa «Responder» para actuar.")
     return f(e, yo, a)
 
 
@@ -427,6 +501,7 @@ def _ver(e, cid, zona_de, yo):
 
 def vista(e, yo):
     """Lo que ve el jugador `yo`: sus cartas ocultas sí, las ajenas solo como cantidad."""
+    _actualizar(e)
     jugadores = []
     for i, j in enumerate(e["jugadores"]):
         zonas = {}
@@ -443,4 +518,7 @@ def vista(e, yo):
     return {"yo": yo, "turno": e["turno"], "activo": e["activo"], "fase": e["fase"], "formato": e["formato"],
             "dano_comandante": con_dano_comandante(e["formato"]), "comandantes": comandantes,
             "dano_letal": DANO_COMANDANTE_LETAL, "ganador": e["ganador"],
-            "jugadores": jugadores, "log": e["log"][-80:]}
+            "jugadores": jugadores, "log": e["log"][-80:], "prioridad": _con_prioridad(e),
+            "preparacion": _preparacion(e), "restante": max(0, round(_restante(e))),
+            "pila": [_ver(e, cid, e["cartas"][cid]["controlador"], yo) | {"controlador": e["cartas"][cid]["controlador"]}
+                     for cid in e["pila"]]}

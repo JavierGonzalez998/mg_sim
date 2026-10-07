@@ -1,4 +1,10 @@
+import io
+import json
+from unittest.mock import patch
+from urllib.error import HTTPError
+
 from django.contrib.auth.models import User
+from django.core.cache import cache
 from django.test import TestCase
 
 from app.models import Jugador, Partida
@@ -53,3 +59,35 @@ class PanelTests(TestCase):
         self.client.post(f"/manage/partidas/{partida.pk}/eliminar/")
         self.assertFalse(Partida.objects.exists())
         self.assertEqual(self.client.get(f"/admin/app/partida/").status_code, 200)
+
+
+class PublicarVersionTests(TestCase):
+    def setUp(self):
+        self.client.force_login(User.objects.create_superuser("jefe", password="x"))
+
+    def test_sin_token(self):
+        with self.settings(GITHUB_TOKEN=""):
+            self.assertContains(self.client.get("/manage/"), "define <code>GITHUB_TOKEN</code>")
+
+    @patch("app.views.urlopen")
+    def test_publica_release(self, urlopen):
+        urlopen.return_value = io.BytesIO(json.dumps({"tag_name": "v1.0.0"}).encode())
+        cache.set("versiones", {"cambios": []})
+        with self.settings(GITHUB_TOKEN="t"):
+            r = self.client.post("/manage/versiones/publicar/", {"etiqueta": "v1.0.0", "titulo": "", "notas": "Pila"})
+        self.assertRedirects(r, "/manage/")
+        req = urlopen.call_args.args[0]
+        self.assertEqual((req.get_method(), req.full_url), ("POST", "https://api.github.com/repos/JavierGonzalez998/mg_sim/releases"))
+        self.assertEqual(json.loads(req.data), {"tag_name": "v1.0.0", "name": "v1.0.0", "body": "Pila"})
+        self.assertIsNone(cache.get("versiones"))
+
+    @patch("app.views.urlopen", side_effect=HTTPError("u", 422, "x", {}, None))
+    def test_version_repetida_conserva_el_formulario(self, urlopen):
+        with self.settings(GITHUB_TOKEN="t"):
+            r = self.client.post("/manage/versiones/publicar/", {"etiqueta": "v1.0.0", "notas": "Mis notas"})
+        self.assertContains(r, "ya existe en GitHub")
+        self.assertContains(r, "Mis notas")
+
+    def test_etiqueta_invalida(self):
+        with self.settings(GITHUB_TOKEN="t"):
+            self.assertContains(self.client.post("/manage/versiones/publicar/", {"etiqueta": "uno"}), "v1.2.0")

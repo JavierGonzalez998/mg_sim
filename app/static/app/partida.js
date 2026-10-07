@@ -5,24 +5,25 @@ const raiz = document.getElementById("mesa");
 const { ws: URL_WS, accion: URL_ACCION, salir: URL_SALIR, csrf: CSRF } = raiz.dataset;
 const CAMPO = new Set(["campo", "tierras"]);
 const NOMBRE = { biblioteca: "Biblioteca", mano: "Mano", campo: "Campo de batalla", tierras: "Tierras",
-                 cementerio: "Cementerio", exilio: "Exilio", mando: "Zona de mando" };
+                 cementerio: "Cementerio", exilio: "Exilio", mando: "Zona de mando", pila: "Pila" };
 const FASES = [["comienzo", "Comienzo"], ["principal1", "Principal 1"], ["combate", "Combate"],
                ["principal2", "Principal 2"], ["final", "Final"]];
 
 let mesa = null, version = -1, porId = {}, dialogo = null, arrastrando = false;
+let finTurno = 0, tiempoPedido = null;  // finTurno: en el reloj local (performance.now), para no depender de la hora del PC
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch]);
 
 // --- Comunicación -----------------------------------------------------------
 
-async function accion(datos) {
+async function accion(datos, silencioso = false) {
   const r = await fetch(URL_ACCION, {
     method: "POST", body: JSON.stringify(datos),
     headers: { "Content-Type": "application/json", "X-CSRFToken": CSRF },
   });
   let d;
   try { d = await r.json(); } catch { d = { error: "Error del servidor." }; }
-  if (!r.ok) { aviso(d.error || "Error."); return null; }
+  if (!r.ok) { if (!silencioso) aviso(d.error || "Error."); return null; }
   recibir(d);
   if (d.vistazo) { dialogo = { tipo: "vistazo", cartas: d.vistazo }; renderDialogo(); }
   return d;
@@ -31,7 +32,11 @@ async function accion(datos) {
 function recibir(d) {
   if (d.version <= version) return;  // la respuesta del POST y el aviso del WebSocket traen la misma versión
   version = d.version;
-  if (d.mesa) { mesa = d.mesa; if (!arrastrando) render(); }
+  if (d.mesa) {
+    mesa = d.mesa;
+    finTurno = performance.now() + mesa.restante * 1000;
+    if (!arrastrando) render();
+  }
 }
 
 function conectar() {
@@ -89,6 +94,7 @@ function htmlJugador(p, i) {
     <section class="jugador ${propio ? "propio" : ""} ${i === mesa.activo ? "activo" : ""} ${p.rindio ? "rindio" : ""}">
       <header>
         <strong>${esc(p.nombre)}${p.rindio ? " (se rindió)" : ""}</strong>
+        ${i === mesa.prioridad && !mesa.preparacion ? `<span class="prio">✋ prioridad</span>` : ""}
         <span>♥ ${boton("vida", -1, "−")}<b>${p.vida}</b>${boton("vida", 1, "+")}</span>
         <span>☠ ${boton("veneno", -1, "−")}<b>${p.veneno}</b>${boton("veneno", 1, "+")}</span>
         ${propio ? "" : `<span>✋ ${z.mano}</span>`}
@@ -123,19 +129,45 @@ function render() {
 }
 
 function renderLateral() {
-  const miTurno = mesa.activo === mesa.yo && mesa.ganador === null;
+  const vivo = mesa.ganador === null && !mesa.jugadores[mesa.yo].rindio;
+  const tengo = vivo && (mesa.prioridad === mesa.yo || mesa.preparacion);
+  const miTurno = tengo && mesa.activo === mesa.yo;
   $("#info").innerHTML = mesa.ganador !== null
     ? `<p class="ganador">🏆 Ganó ${esc(mesa.jugadores[mesa.ganador].nombre)}</p> <a href="${URL_SALIR}">Volver</a>`
-    : `<p>Turno ${mesa.turno} · juega <b>${esc(mesa.jugadores[mesa.activo].nombre)}</b>${mesa.formato ? ` · ${esc(mesa.formato)}` : ""}</p>`;
+    : `<p>Turno ${mesa.turno} · juega <b>${esc(mesa.jugadores[mesa.activo].nombre)}</b>${mesa.formato ? ` · ${esc(mesa.formato)}` : ""}
+       · <span id="reloj"></span></p>`;
+  reloj();
   $("#fases").innerHTML = FASES.map(([f, n]) =>
     `<button data-fase="${f}" class="${f === mesa.fase ? "actual" : ""}" ${miTurno ? "" : "disabled"}>${n}</button>`).join("");
   $("#pasar").disabled = !miTurno;
+  $("#prioridad").innerHTML = mesa.preparacion ? "Preparación: todos pueden hacer sus mulligans."
+    : `Prioridad: <b>${esc(mesa.jugadores[mesa.prioridad].nombre)}</b>`;
+  // La pila se muestra con la carta de arriba primero.
+  $("#pila").dataset.jugador = mesa.yo;
+  $("#pila").innerHTML = mesa.pila.slice().reverse().map(c => htmlCarta(c, "pila", c.controlador)).join("");
+  $("#responder").hidden = !vivo || tengo;
+  $("#pasar-prioridad").hidden = !vivo || mesa.preparacion || mesa.prioridad !== mesa.yo || mesa.activo === mesa.yo;
+  for (const b of document.querySelectorAll(".botones button:not([data-accion=rendirse])")) b.disabled = !tengo;
   const log = $("#log");
   const alFinal = log.scrollTop + log.clientHeight >= log.scrollHeight - 30;
   log.innerHTML = mesa.log.map(l =>
     `<li${l.carta?.imagen ? ` data-img="${esc(l.carta.imagen)}"` : ""}>${esc(l.t)}</li>`).join("");
   if (alFinal) log.scrollTop = log.scrollHeight;
 }
+
+// Cuenta atrás del turno. Al llegar a cero cualquier jugador avisa; el servidor comprueba el tiempo y pasa el turno.
+function reloj() {
+  const el = $("#reloj");
+  if (!mesa || !el) return;
+  const s = Math.max(0, Math.ceil((finTurno - performance.now()) / 1000));
+  el.textContent = `⏱ ${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+  el.classList.toggle("prio", s <= 60);
+  if (s === 0 && tiempoPedido !== mesa.turno) {
+    tiempoPedido = mesa.turno;
+    accion({ accion: "tiempo" }, true).then(d => { if (!d) setTimeout(() => (tiempoPedido = null), 3000); });
+  }
+}
+setInterval(reloj, 1000);
 
 function renderDialogo() {
   const dlg = $("#dialogo");
@@ -178,6 +210,8 @@ function pedirN(texto, f, porDefecto = 1) {
 
 const BOTONES = {
   pasar_turno: () => accion({ accion: "pasar_turno" }),
+  responder: () => accion({ accion: "responder" }),
+  pasar_prioridad: () => accion({ accion: "pasar_prioridad" }),
   robar: () => accion({ accion: "robar" }),
   robar_n: () => pedirN("¿Cuántas cartas robar?", n => accion({ accion: "robar", n })),
   enderezar: () => accion({ accion: "enderezar" }),
@@ -215,17 +249,20 @@ function opcionesCarta({ c, zona, j }) {
       if (k !== j && !o.rindio) ops.push([`Dar el control a ${o.nombre}`, () => mover(id, zona, { jugador: k })]);
     });
   } else if (zona === "mano") {
-    ops.push(["Jugar", () => mover(id, c.tierra ? "tierras" : "campo", { jugador: yo })]);
+    if (c.tierra) ops.push(["Jugar", () => mover(id, "tierras", { jugador: yo })]);
+    else ops.push(["Lanzar (a la pila)", () => mover(id, "pila")], ["Poner en el campo", () => mover(id, "campo", { jugador: yo })]);
     ops.push(["Jugar boca abajo", () => mover(id, "campo", { jugador: yo, boca_abajo: true })]);
     ops.push(["Revelar", hacer("revelar")]);
+  } else if (zona === "pila") {
+    ops.push(["Resolver (al campo)", () => mover(id, c.tierra ? "tierras" : "campo", { jugador: j })]);
   } else if (zona !== "biblioteca") {
     ops.push(["Añadir contador…", otroContador]);
   }
   for (const t of Object.keys(c.contadores || {})) ops.push([`Quitar un contador ${t}`, hacer("contador", { tipo: t, delta: -1 })]);
   ops.push(null);
-  for (const destino of ["mano", "campo", "tierras", "cementerio", "exilio", "mando"]) {
+  for (const destino of ["pila", "mano", "campo", "tierras", "cementerio", "exilio", "mando"]) {
     if (destino === zona) continue;
-    const jugador = CAMPO.has(destino) ? (CAMPO.has(zona) ? j : yo) : undefined;
+    const jugador = CAMPO.has(destino) ? (CAMPO.has(zona) || zona === "pila" ? j : yo) : undefined;
     ops.push([`→ ${NOMBRE[destino]}`, () => mover(id, destino, { jugador })]);
   }
   ops.push(["→ Biblioteca (arriba)", () => mover(id, "biblioteca")]);
@@ -278,7 +315,7 @@ document.addEventListener("click", e => {
 
 document.addEventListener("dblclick", e => {
   const carta = e.target.closest(".carta"), info = carta && porId[carta.dataset.id];
-  if (info?.zona === "mano") mover(info.c.id, info.c.tierra ? "tierras" : "campo", { jugador: mesa.yo });
+  if (info?.zona === "mano") info.c.tierra ? mover(info.c.id, "tierras", { jugador: mesa.yo }) : mover(info.c.id, "pila");
 });
 
 document.addEventListener("contextmenu", e => {
