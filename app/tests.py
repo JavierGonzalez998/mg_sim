@@ -350,3 +350,29 @@ class WebsocketTests(TestCase):
     async def test_rechaza_a_quien_no_juega(self):
         _, conectado = await self.conectar(self.eva)
         self.assertFalse(conectado)
+
+
+class ConfigMysqlTests(TestCase):
+    """main.settings.config_mysql con las variables de docker compose y de Railway."""
+
+    def config(self, **env):
+        from unittest.mock import patch as parchear
+
+        from main.settings import config_mysql
+        with parchear.dict("os.environ", env, clear=True):
+            return config_mysql()
+
+    def test_variantes(self):
+        self.assertIsNone(self.config())
+        compose = self.config(MYSQL_DATABASE="mg", MYSQL_USER="u", MYSQL_PASSWORD="p", MYSQL_HOST="db")
+        self.assertEqual((compose["HOST"], compose["NAME"], compose["PORT"]), ("db", "mg", "3306"))
+        railway = self.config(MYSQL_DATABASE="railway", MYSQLHOST="mysql.railway.internal", MYSQLUSER="root",
+                              MYSQLPASSWORD="p", MYSQLPORT="3306")
+        self.assertEqual((railway["HOST"], railway["USER"]), ("mysql.railway.internal", "root"))
+        url = self.config(MYSQL_URL="mysql://root:p%40ss@mysql.railway.internal:3306/railway", MYSQL_DATABASE="otra")
+        self.assertEqual((url["HOST"], url["NAME"], url["PASSWORD"]), ("mysql.railway.internal", "railway", "p@ss"))
+
+    def test_sin_host_avisa(self):
+        from django.core.exceptions import ImproperlyConfigured
+        with self.assertRaisesMessage(ImproperlyConfigured, "MYSQL_URL"):
+            self.config(MYSQL_DATABASE="railway", MYSQL_ROOT_PASSWORD="x")

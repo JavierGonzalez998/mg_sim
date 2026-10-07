@@ -108,17 +108,25 @@ else:
 # Database
 # https://docs.djangoproject.com/en/6.1/ref/settings/#databases
 
+def env_mysql(nombre):
+    # docker compose usa MYSQL_HOST, MYSQL_USER...; el MySQL de Railway, MYSQLHOST, MYSQLUSER... (sin guion bajo).
+    return os.environ.get(f'MYSQL_{nombre}') or os.environ.get(f'MYSQL{nombre}', '')
+
+
 def config_mysql():
-    """MySQL desde MYSQL_URL (la URL de conexión que da Railway) o desde las variables MYSQL_* sueltas."""
+    """MySQL desde MYSQL_URL (la URL de conexión que da Railway) o desde las variables sueltas."""
     if url := os.environ.get('MYSQL_URL'):
         u = urlparse(url)
         return {'NAME': u.path.lstrip('/'), 'USER': unquote(u.username or ''), 'PASSWORD': unquote(u.password or ''),
                 'HOST': u.hostname, 'PORT': str(u.port or 3306)}
-    if os.environ.get('MYSQL_DATABASE'):
-        return {'NAME': os.environ['MYSQL_DATABASE'], 'USER': os.environ.get('MYSQL_USER', ''),
-                'PASSWORD': os.environ.get('MYSQL_PASSWORD', ''), 'HOST': os.environ.get('MYSQL_HOST', 'db'),
-                'PORT': os.environ.get('MYSQL_PORT', '3306')}
-    return None
+    if not (nombre := env_mysql('DATABASE')):
+        return None
+    if not (host := env_mysql('HOST')):
+        raise ImproperlyConfigured(
+            'Hay base de datos MySQL configurada pero falta el host: define MYSQL_URL '
+            '(en Railway: ${{MySQL.MYSQL_URL}}) o MYSQL_HOST.')
+    return {'NAME': nombre, 'USER': env_mysql('USER'), 'PASSWORD': env_mysql('PASSWORD'), 'HOST': host,
+            'PORT': env_mysql('PORT') or '3306'}
 
 
 if mysql := config_mysql():
