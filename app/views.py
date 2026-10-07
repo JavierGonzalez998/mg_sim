@@ -1,5 +1,6 @@
 import json
 import re
+from datetime import date
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -7,12 +8,13 @@ from django import forms
 from django.contrib import messages
 from django.conf import settings
 from django.contrib.auth.decorators import login_required
-from django.core.cache import cache
 from django.db import transaction
 from django.db.models import Q, Sum
 from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.utils.html import escape
 from django.utils.http import url_has_allowed_host_and_scheme
+from django.utils.safestring import mark_safe
 from django.views.decorators.http import require_POST
 
 from user.models import Amistad
@@ -126,47 +128,50 @@ def datos_tablero(cartas):
 
 
 def inicio(request):
-    return render(request, "app/inicio.html")
+    try:
+        changelog = (settings.BASE_DIR / "CHANGELOG.md").read_text(encoding="utf-8")
+    except FileNotFoundError:
+        changelog = ""
+    return render(request, "app/inicio.html", {"versiones": leer_changelog(changelog)})
 
 
-GITHUB_REPO = "JavierGonzalez998/mg_sim"
+def _md(texto):
+    """Markdown en línea del changelog: **negrita**, `código` y [enlaces](url). El resto se escapa."""
+    html = escape(texto)
+    html = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", html)
+    html = re.sub(r"`(.+?)`", r"<code>\1</code>", html)
+    html = re.sub(r"\[(.+?)\]\((https?://[^)\s]+)\)", r'<a href="\2">\1</a>', html)
+    return mark_safe(html)
 
 
-def _github(ruta, datos=None):
-    """GET a la API de GitHub del repositorio, o POST con `datos` (JSON)."""
-    cabeceras = {"Accept": "application/vnd.github+json", "User-Agent": "mg_simulator/0.1"}
-    if settings.GITHUB_TOKEN:
-        cabeceras["Authorization"] = f"Bearer {settings.GITHUB_TOKEN}"
-    cuerpo = None if datos is None else json.dumps(datos).encode()
-    if cuerpo:
-        cabeceras["Content-Type"] = "application/json"
-    req = Request(f"https://api.github.com/repos/{GITHUB_REPO}/{ruta}", data=cuerpo, headers=cabeceras)
-    with urlopen(req, timeout=10) as r:
-        return json.load(r)
-
-
-def _cambios():
-    """Las releases de GitHub o, si aún no hay ninguna, los últimos commits."""
-    cambios = [{"etiqueta": r["tag_name"], "titulo": r["name"] or r["tag_name"], "detalle": r["body"] or "",
-                "fecha": r["published_at"], "url": r["html_url"]} for r in _github("releases?per_page=10")]
-    if not cambios:
-        for c in _github("commits?per_page=10"):
-            titulo, _, detalle = c["commit"]["message"].partition("\n")
-            cambios.append({"etiqueta": c["sha"][:7], "titulo": titulo, "detalle": detalle.strip(),
-                            "fecha": c["commit"]["author"]["date"], "url": c["html_url"]})
-    return cambios
-
-
-def versiones(request):
-    """Cambios del proyecto para la portada. Se guardan en caché: unas pocas consultas a GitHub por hora."""
-    datos = cache.get("versiones")
-    if datos is None:
-        try:
-            datos, duracion = {"cambios": _cambios()}, 600
-        except (URLError, TimeoutError, ValueError, KeyError):
-            datos, duracion = {"error": "No se pudieron cargar los cambios desde GitHub."}, 60
-        cache.set("versiones", datos, duracion)
-    return JsonResponse(datos, status=502 if "error" in datos else 200)
+def leer_changelog(texto):
+    """CHANGELOG.md (formato Keep a Changelog) → [{version, fecha, secciones: [{titulo, cambios: [{texto, sub}]}]}]."""
+    versiones, item = [], None
+    for linea in texto.splitlines():
+        if m := re.match(r"## \[(.+?)\](?: - (\d{4}-\d{2}-\d{2}))?", linea):
+            fecha = date.fromisoformat(m[2]) if m[2] else None
+            versiones.append({"version": m[1], "fecha": fecha, "secciones": []})
+            item = None
+        elif not versiones:
+            continue
+        elif linea.startswith("### "):
+            versiones[-1]["secciones"].append({"titulo": linea[4:].strip(), "cambios": []})
+            item = None
+        elif (m := re.match(r"( *)- (.+)", linea)) and versiones[-1]["secciones"]:
+            cambios = versiones[-1]["secciones"][-1]["cambios"]
+            item = {"texto": m[2], "sub": []}
+            (cambios[-1]["sub"] if m[1] and cambios else cambios).append(item)
+        elif item and linea.startswith("  ") and linea.strip():
+            item["texto"] += " " + linea.strip()  # continuación de una línea larga
+        else:
+            item = None
+    for v in versiones:
+        for s in v["secciones"]:
+            for c in s["cambios"]:
+                c["texto"] = _md(c["texto"])
+                for sub in c["sub"]:
+                    sub["texto"] = _md(sub["texto"])
+    return versiones
 
 
 @login_required

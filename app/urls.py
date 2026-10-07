@@ -4,7 +4,6 @@ from . import views
 
 urlpatterns = [
     path("", views.inicio, name="inicio"),
-    path("versiones/", views.versiones, name="versiones"),
     path("mazos/", views.mazos, name="mazos"),
     path("mazos/<int:pk>/", views.mazo, name="mazo"),
     path("mazos/<int:pk>/actualizar/", views.actualizar_mazo, name="actualizar_mazo"),

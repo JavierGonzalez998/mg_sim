@@ -1,17 +1,16 @@
 import io
 import json
 from unittest.mock import patch
-from urllib.error import URLError
 
 from channels.routing import URLRouter
 from channels.testing import WebsocketCommunicator
+from django.conf import settings
 from django.contrib.auth.models import User
-from django.core.cache import cache
 from django.test import TestCase
 
 from user.models import Amistad
 
-from . import juego
+from . import juego, views
 from .models import Carta, Jugador, Mazo, Partida
 from .routing import websocket_urlpatterns
 
@@ -425,28 +424,41 @@ class MovilTests(TestCase):
         self.assertNotContains(self.client.get("/mazos/"), "aviso-tactil")
 
 
-def github_falso(req, *a, **k):
-    commits = [{"sha": "c404f963169f", "html_url": "https://github.com/x/commit/c404f96",
-                "commit": {"message": "Mesa con pila\n\nY prioridad", "author": {"date": "2026-10-07T15:48:04Z"}}}]
-    return io.BytesIO(json.dumps([] if "releases" in req.full_url else commits).encode())
+CHANGELOG = """# Changelog
+
+## [0.2.0] - 2026-10-08
+
+### Añadido
+
+- **Pila** de hechizos con `prioridad` y una línea
+  larga que sigue.
+- Partidas:
+  - Sub <b>cambio</b>.
+
+## [0.1.0] - 2026-10-07
+
+### Corregido
+
+- Arreglo.
+
+[0.2.0]: https://github.com/x/compare
+"""
 
 
 class VersionesTests(TestCase):
-    def setUp(self):
-        cache.clear()
+    def test_leer_changelog(self):
+        v = views.leer_changelog(CHANGELOG)
+        self.assertEqual([(x["version"], str(x["fecha"])) for x in v], [("0.2.0", "2026-10-08"), ("0.1.0", "2026-10-07")])
+        cambios = v[0]["secciones"][0]["cambios"]
+        self.assertEqual(v[0]["secciones"][0]["titulo"], "Añadido")
+        self.assertEqual(cambios[0]["texto"],
+                         "<strong>Pila</strong> de hechizos con <code>prioridad</code> y una línea larga que sigue.")
+        self.assertEqual(cambios[1]["sub"][0]["texto"], "Sub &lt;b&gt;cambio&lt;/b&gt;.")  # el HTML se escapa
+        self.assertEqual(v[1]["secciones"][0]["cambios"][0]["texto"], "Arreglo.")
 
-    @patch("app.views.urlopen", side_effect=github_falso)
-    def test_commits_en_cache(self, urlopen):
-        for _ in range(2):
-            r = self.client.get("/versiones/")
-        self.assertEqual(r.json()["cambios"], [{
-            "etiqueta": "c404f96", "titulo": "Mesa con pila", "detalle": "Y prioridad",
-            "fecha": "2026-10-07T15:48:04Z", "url": "https://github.com/x/commit/c404f96"}])
-        self.assertEqual(urlopen.call_count, 2)  # releases (vacías) + commits; la segunda visita sale de la caché
-
-    @patch("app.views.urlopen", side_effect=URLError("sin red"))
-    def test_github_caido(self, urlopen):
-        self.assertEqual(self.client.get("/versiones/").status_code, 502)
+    def test_portada_muestra_el_changelog_del_proyecto(self):
+        version = views.leer_changelog((settings.BASE_DIR / "CHANGELOG.md").read_text(encoding="utf-8"))[0]["version"]
+        self.assertContains(self.client.get("/"), f"v{version}")
 
 
 class NotificacionesTests(TestCase):

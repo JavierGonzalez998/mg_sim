@@ -87,41 +87,34 @@
   <section id="versiones" class="mx-auto max-w-6xl px-4 py-24 sm:px-6">
     <p class="etiqueta mb-2">Versiones</p>
     <h2 class="mt-0 mb-12 text-4xl">Lo <span class="cursiva">nuevo</span> en la mesa</h2>
-    <ol id="cambios" class="grid gap-6" data-url="{% url 'versiones' %}">
-      <li class="text-hueso-2">Cargando cambios…</li>
-    </ol>
-    <a class="etiqueta mt-10 inline-block" href="https://github.com/JavierGonzalez998/mg_sim/commits">Ver todo el historial en GitHub →</a>
-    <template id="cambio">
-      <li class="grid gap-1 border-l-2 border-bermellon pl-4 sm:grid-cols-[11rem_1fr] sm:gap-6">
-        <span class="etiqueta pt-1"></span>
-        <div>
-          <a class="font-display text-lg text-hueso no-underline hover:text-bermellon-2" target="_blank" rel="noopener"></a>
-          <p class="m-0 mt-1 text-sm whitespace-pre-line text-hueso-2"></p>
-        </div>
-      </li>
-    </template>
+    {# Sale de CHANGELOG.md (app.views.leer_changelog): la más reciente abierta, las anteriores plegadas. #}
+    <div class="grid gap-4">
+      {% for v in versiones %}
+        <details class="group border-l-2 border-bermellon bg-tinta-2/60 px-5 py-4" {% if forloop.first %}open{% endif %}>
+          <summary class="flex cursor-pointer flex-wrap items-baseline gap-x-4 gap-y-1 list-none">
+            <span class="font-display text-2xl text-hueso italic">v{{ v.version }}</span>
+            {% if v.fecha %}<span class="etiqueta">{{ v.fecha|date:"j \d\e F, Y" }}</span>{% endif %}
+            {% if forloop.first %}<span class="sello sello-ok">Actual</span>{% endif %}
+            <span class="etiqueta ml-auto group-open:hidden">Ver cambios +</span>
+          </summary>
+          {% for s in v.secciones %}
+            <p class="etiqueta mt-5 mb-2 text-bermellon-2">{{ s.titulo }}</p>
+            <ul class="m-0 grid gap-2 pl-5 text-sm text-hueso-2 marker:text-bermellon">
+              {% for c in s.cambios %}
+                <li>{{ c.texto }}
+                  {% if c.sub %}
+                    <ul class="mt-1 grid gap-1 pl-5">{% for sub in c.sub %}<li>{{ sub.texto }}</li>{% endfor %}</ul>
+                  {% endif %}
+                </li>
+              {% endfor %}
+            </ul>
+          {% endfor %}
+        </details>
+      {% empty %}
+        <p class="text-hueso-2">Aún no hay versiones publicadas.</p>
+      {% endfor %}
+    </div>
   </section>
-  <script>
-    // Versiones (releases o commits de GitHub), consultadas y cacheadas por el servidor: app.views.versiones.
-    (async () => {
-      const lista = document.getElementById("cambios");
-      try {
-        const r = await fetch(lista.dataset.url);
-        if (!r.ok) throw r.status;
-        const { cambios } = await r.json();
-        const molde = document.getElementById("cambio").content;
-        lista.replaceChildren(...cambios.map(c => {
-          const li = molde.cloneNode(true), fecha = new Date(c.fecha).toLocaleDateString("es", { day: "numeric", month: "short", year: "numeric" });
-          li.querySelector("span").textContent = `${fecha} · ${c.etiqueta}`;
-          Object.assign(li.querySelector("a"), { textContent: c.titulo, href: c.url });
-          li.querySelector("p").textContent = c.detalle;
-          return li;
-        }));
-      } catch {
-        lista.innerHTML = '<li class="text-hueso-2">No se pudieron cargar los cambios desde GitHub.</li>';
-      }
-    })();
-  </script>
 
   <section id="empezar" class="px-4 py-24 sm:px-6">
     <div class="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-8 bg-bermellon p-10 text-tinta shadow-[10px_10px_0_0_rgb(0_0_0/.5)] sm:p-14">

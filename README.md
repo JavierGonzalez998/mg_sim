@@ -15,8 +15,10 @@ partidas de 2 a 5 jugadores con amigos, en tiempo real.
   - Turnos y fases, mover cartas entre zonas, girar, transformar, boca abajo, contadores, fichas, cambio de control,
     mulligan, mirar o buscar en la biblioteca, vida, veneno, daño de comandante (por comandante), impuesto de
     comandante, dados, chat y registro de la partida.
-- **Panel de administración** (`/manage/`): solo para superusuarios. Estadísticas, usuarios (activar y desactivar),
-  partidas activas y publicación de versiones (releases de GitHub, que la portada lista en «Versiones»). Además, los modelos están registrados en el admin de Django (`/admin/`).
+- **Versiones:** la portada muestra el historial de cambios a partir de [`CHANGELOG.md`](CHANGELOG.md); para publicar
+  una versión basta con añadirla ahí.
+- **Panel de administración** (`/manage/`): solo para superusuarios. Estadísticas, usuarios (activar y desactivar) y
+  partidas activas. Además, los modelos están registrados en el admin de Django (`/admin/`).
 
 ## Tecnologías
 
@@ -126,7 +128,6 @@ Todas están documentadas en [`.env.example`](.env.example). Las principales:
 | `MYSQL_DATABASE`, `MYSQL_USER`, `MYSQL_PASSWORD`, `MYSQL_ROOT_PASSWORD` | Datos de MySQL. |
 | `DJANGO_SUPERUSER_USERNAME`, `DJANGO_SUPERUSER_EMAIL`, `DJANGO_SUPERUSER_PASSWORD` | Superusuario inicial (opcional). |
 | `EMAIL_HOST` y relacionadas | SMTP (opcional; la app aún no envía correos). |
-| `GITHUB_TOKEN` | Token de GitHub. Leer las versiones de la portada (opcional si el repositorio es público); publicarlas desde `/manage/` requiere escritura en *Contents*. |
 | `PUERTO` | Puerto del host donde nginx publica la app. |
 
 ### HTTPS

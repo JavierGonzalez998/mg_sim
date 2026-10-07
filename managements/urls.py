@@ -6,5 +6,4 @@ urlpatterns = [
     path("", views.panel, name="panel"),
     path("usuarios/<int:pk>/activo/", views.cambiar_activo, name="cambiar_activo"),
     path("partidas/<int:pk>/eliminar/", views.eliminar_partida, name="eliminar_partida"),
-    path("versiones/publicar/", views.publicar_version, name="publicar_version"),
 ]
