@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/6.1/ref/settings/
 
 import os
 from pathlib import Path
+from urllib.parse import unquote, urlparse
 
 from django.core.exceptions import ImproperlyConfigured
 
@@ -38,6 +39,12 @@ if not SECRET_KEY:
 ALLOWED_HOSTS = lista_env('DJANGO_ALLOWED_HOSTS')
 # Orígenes con esquema, p. ej. https://mgsimulator.com (necesario para formularios tras HTTPS/proxy).
 CSRF_TRUSTED_ORIGINS = lista_env('DJANGO_CSRF_TRUSTED_ORIGINS')
+
+# Railway publica la app por HTTPS en este dominio (p. ej. mgsim-production.up.railway.app).
+RAILWAY_PUBLIC_DOMAIN = os.environ.get('RAILWAY_PUBLIC_DOMAIN')
+if RAILWAY_PUBLIC_DOMAIN:
+    ALLOWED_HOSTS.append(RAILWAY_PUBLIC_DOMAIN)
+    CSRF_TRUSTED_ORIGINS.append(f'https://{RAILWAY_PUBLIC_DOMAIN}')
 
 
 # Application definition
@@ -101,15 +108,24 @@ else:
 # Database
 # https://docs.djangoproject.com/en/6.1/ref/settings/#databases
 
-if os.environ.get('MYSQL_DATABASE'):
+def config_mysql():
+    """MySQL desde MYSQL_URL (la URL de conexión que da Railway) o desde las variables MYSQL_* sueltas."""
+    if url := os.environ.get('MYSQL_URL'):
+        u = urlparse(url)
+        return {'NAME': u.path.lstrip('/'), 'USER': unquote(u.username or ''), 'PASSWORD': unquote(u.password or ''),
+                'HOST': u.hostname, 'PORT': str(u.port or 3306)}
+    if os.environ.get('MYSQL_DATABASE'):
+        return {'NAME': os.environ['MYSQL_DATABASE'], 'USER': os.environ.get('MYSQL_USER', ''),
+                'PASSWORD': os.environ.get('MYSQL_PASSWORD', ''), 'HOST': os.environ.get('MYSQL_HOST', 'db'),
+                'PORT': os.environ.get('MYSQL_PORT', '3306')}
+    return None
+
+
+if mysql := config_mysql():
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.mysql',
-            'NAME': os.environ['MYSQL_DATABASE'],
-            'USER': os.environ.get('MYSQL_USER', ''),
-            'PASSWORD': os.environ.get('MYSQL_PASSWORD', ''),
-            'HOST': os.environ.get('MYSQL_HOST', 'db'),
-            'PORT': os.environ.get('MYSQL_PORT', '3306'),
+            **mysql,
             'CONN_MAX_AGE': 60,
             'OPTIONS': {'charset': 'utf8mb4'},
         }
@@ -167,8 +183,8 @@ if not DEBUG:
         'staticfiles': {'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage'},
     }
 
-# Detrás de un proxy con HTTPS (nginx, Caddy, Traefik, un balanceador...).
-if os.environ.get('DJANGO_HTTPS') == '1':
+# Detrás de un proxy con HTTPS (nginx, Caddy, Traefik, un balanceador...). En Railway siempre lo hay.
+if os.environ.get('DJANGO_HTTPS', '1' if RAILWAY_PUBLIC_DOMAIN else '0') == '1':
     SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True

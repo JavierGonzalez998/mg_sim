@@ -89,6 +89,29 @@ Se levantan cuatro servicios:
 | `redis` | Lleva los avisos de las partidas entre procesos. |
 
 El `Dockerfile` tiene dos imágenes finales: `app` (Django) y `proxy` (nginx con los estáticos ya recolectados).
+`app` es la última etapa, así que es la que se construye si no se indica ninguna (`docker build .`).
+
+## Producción en Railway
+
+Railway no usa `docker-compose.yml`: construye el `Dockerfile` como un único servicio (la etapa `app`). No hace falta
+nginx: Railway pone delante su propio proxy con HTTPS y WebSockets, y los estáticos los sirve WhiteNoise.
+
+1. Crea el proyecto desde el repositorio y añade los servicios **MySQL** y **Redis** de Railway.
+2. En el servicio de la app, configura estas variables (las `${{...}}` son referencias de Railway):
+
+   | Variable | Valor |
+   |---|---|
+   | `DJANGO_SECRET_KEY` | Una clave larga y aleatoria |
+   | `MYSQL_URL` | `${{MySQL.MYSQL_URL}}` |
+   | `REDIS_URL` | `${{Redis.REDIS_URL}}` |
+   | `DJANGO_SUPERUSER_USERNAME`, `DJANGO_SUPERUSER_EMAIL`, `DJANGO_SUPERUSER_PASSWORD` | Opcional: superusuario inicial |
+
+3. Genera un dominio público en *Settings → Networking*.
+
+No hace falta definir `PORT`, `DJANGO_ALLOWED_HOSTS`, `DJANGO_CSRF_TRUSTED_ORIGINS` ni `DJANGO_HTTPS`: Daphne escucha en
+el `PORT` que asigna Railway, y el dominio de `RAILWAY_PUBLIC_DOMAIN` se añade solo a los hosts permitidos y a los
+orígenes de CSRF, con las cookies seguras activadas. Si usas un dominio propio, añádelo en `DJANGO_ALLOWED_HOSTS` y
+`DJANGO_CSRF_TRUSTED_ORIGINS` (con `https://`).
 
 ### Variables de entorno
 
