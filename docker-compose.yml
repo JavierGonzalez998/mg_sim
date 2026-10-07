@@ -10,7 +10,8 @@ services:
     ports:
       - "${PUERTO:-80}:80"
     depends_on:
-      - web
+      web:
+        condition: service_healthy
 
   web:
     build:
@@ -25,6 +26,13 @@ services:
     # Sin puerto publicado: solo se llega a través de nginx.
     expose:
       - "8000"
+    healthcheck:
+      # Por TCP (no HTTP): así no depende de DJANGO_ALLOWED_HOSTS. Pasa cuando Daphne ya escucha.
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1', 8000), 2)"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
     depends_on:
       db:
         condition: service_healthy
